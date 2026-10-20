@@ -1,0 +1,2 @@
+deployment trigger
+2026-10-20 operator-job-runner baseline
