@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
 from app.db.database import engine
@@ -8,16 +8,17 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health")
 def health() -> dict:
-    db_ok = False
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        db_ok = True
-    except Exception:
-        db_ok = False
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="database unavailable",
+        ) from exc
 
     return {
         "ok": True,
         "service": "ai-consult-beauty-backend",
-        "database": "ok" if db_ok else "unavailable",
+        "database": "ok",
     }
