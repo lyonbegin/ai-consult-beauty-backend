@@ -1,12 +1,27 @@
-"""Migration entry point for selected data from the existing tour/touranal databases.
+"""Migration entry point for selected data from the existing tour/touranal project."""
 
-The importer is intentionally schema-neutral at this stage. The existing SQLite schemas
-will be inspected before table mappings are implemented.
-"""
+from typing import Any
 
 
-def run_tour_import() -> dict:
+def run_tour_import(params: dict[str, Any] | None = None) -> dict[str, Any]:
+    params = params or {}
+    mode = str(params.get("mode", "dry-run"))
+    source = str(params.get("source", "")).strip()
+
+    if mode == "dry-run":
+        return {
+            "collector": "tour-import",
+            "status": "dry-run-ok",
+            "source": source or None,
+            "message": "Job pipeline is working. No source database was changed.",
+        }
+
+    if not source:
+        raise RuntimeError("source is required for live tour import")
+
     return {
         "collector": "tour-import",
-        "status": "pending-schema-mapping",
+        "status": "source-received",
+        "source": source,
+        "message": "Source was accepted. Schema-specific import mapping is the next migration step.",
     }
