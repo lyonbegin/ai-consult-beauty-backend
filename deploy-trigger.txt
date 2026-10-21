@@ -1,3 +1,4 @@
 deployment trigger
 2026-10-20 operator-job-runner baseline
 2026-10-21 HIRA hospital collector v1
+2026-10-21 HIRA hospital collector v1 redeploy
