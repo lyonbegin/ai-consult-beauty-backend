@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Counselor SDK · Playground</title><link rel="stylesheet" href="/styles.css"></head>
+<body><main>
+<header><p class="eyebrow">GRB LAB · REUSABLE AI COUNSELOR</p><h1>인공지능 상담사 SDK</h1><p>같은 SDK에 상담 분야·역할·목표·도구를 주입해 각 프로젝트에서 재사용합니다. 이 Playground는 서버에 배포된 SDK ESM을 실제 import합니다.</p><p id="status">상태 조회 중</p></header>
+<section class="columns"><div class="panel"><h2>상담사 설정</h2>
+<label>Preset<select id="preset"><option value="generic">범용 AI 상담사</option><option value="beauty">AI언니 · 피부·미용</option><option value="elderly-care">장기요양</option><option value="tutoring">개인과외</option><option value="interview">모의면접</option><option value="custom">직접 설정</option></select></label>
+<label>Domain<input id="domain" autocomplete="off"></label>
+<label>상담사 이름<input id="name"></label><label>Role<input id="role"></label>
+<label>Objective<textarea id="objective"></textarea></label><label>Tools (쉼표 구분)<input id="tools"></label>
+<label>Instructions (줄바꿈 구분)<textarea id="instructions"></textarea></label>
+<label>Runtime API token<input id="token" type="password" placeholder="인증 토큰은 서버에 저장하지 않습니다"></label>
+<button id="apply">프로필 적용 / 세션 초기화</button>
+<p class="tip">SDK: <code>/sdk/ai-counselor.esm.js</code></p><p id="version"></p>
+</div><div class="panel"><h2>SDK 실제 응답 검증</h2><div id="messages" class="messages" aria-live="polite"></div>
+<label>대화 입력<textarea id="message" placeholder="상담사에게 질문하십시오."></textarea></label><button id="send">AI 상담사에게 전송</button>
+<pre id="trace"></pre><p id="error" role="alert"></p></div></section></main>
+<script type="module">
+const sdk=await import('/sdk/ai-counselor.esm.js');
+const el=id=>document.getElementById(id);
+el('version').textContent='실제 SDK '+sdk.AI_COUNSELOR_SDK_VERSION;
+let counselor;
+const keys=['domain','name','role','objective'];
+function applyPreset(){
+ const p=sdk.counselorPresets[el('preset').value]||{};
+ for(const key of keys)el(key).value=p[key]||'';
+ el('tools').value=(p.tools||[]).join(', ');
+ el('instructions').value=(p.instructions||[]).join('\n');
+}
+function profile(){
+ const preset=el('preset').value;
+ const p={preset,...Object.fromEntries(keys.map(k=>[k,el(k).value.trim()])),
+ tools:el('tools').value.split(',').map(x=>x.trim()).filter(Boolean),
+ instructions:el('instructions').value.split('\n').map(x=>x.trim()).filter(Boolean)};
+ return p;
+}
+function reset(){
+ counselor=sdk.AICounselor.create({endpoint:location.origin,profile:profile(),accessToken:el('token').value.trim()});
+ el('messages').replaceChildren();el('trace').textContent='New session: '+counselor.sessionId;el('error').textContent='';
+}
+function message(role,content){
+ const div=document.createElement('article');div.className='message '+role;div.textContent=content;
+ el('messages').appendChild(div);el('messages').scrollTop=el('messages').scrollHeight;
+}
+el('preset').addEventListener('change',()=>{applyPreset();reset();});
+el('apply').addEventListener('click',reset);
+el('send').addEventListener('click',async()=>{
+ const text=el('message').value.trim();if(!text)return;
+ if(!counselor.accessToken){el('error').textContent='Runtime API token이 필요합니다.';return;}
+ message('user',text);el('error').textContent='';el('send').disabled=true;
+ try {const result=await counselor.respond(text,{surface:'playground'});message('assistant',result.text);el('trace').textContent=JSON.stringify(result.trace,null,2);}
+ catch(error){el('error').textContent=String(error.message||error);}
+ finally {el('send').disabled=false;}
+});
+fetch('/health').then(r=>r.json()).then(v=>{
+ el('status').textContent='Runtime '+(v.ok?'online':'offline')+' · OpenAI '+(v.openaiConfigured?'configured':'missing')+' · Participant '+(v.participantEnabled?'on':'off');
+}).catch(()=>{el('status').textContent='Runtime status unavailable';});
+applyPreset();reset();
+</script></body></html>
