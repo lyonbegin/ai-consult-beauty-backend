@@ -1,0 +1,30 @@
+name: Verify AI Counselor OpenAI Responses models
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/verify-ai-counselor-models.yml"]
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call Responses API with requested and stable fallback models
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${OPENAI_API_KEY:-}" == sk-* ]]
+          echo "::add-mask::$OPENAI_API_KEY"
+          for model in gpt-5.6-sol gpt-4.1-mini; do
+            PAYLOAD="$(printf '%s' "$model" | python3 -c 'import json,sys;print(json.dumps({"model":sys.stdin.read().strip(),"input":"짧게 확인이라고 답변해 주세요.","max_output_tokens":48}))')"
+            STATUS="$(curl -sS --connect-timeout 8 --max-time 60 -o /tmp/model-result.json -w '%{http_code}' \
+              -X POST https://api.openai.com/v1/responses \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -H 'content-type: application/json' --data-binary "$PAYLOAD" || true)"
+            echo "AI_COUNSELOR_MODEL=$model HTTP_STATUS=$STATUS"
+            if [[ "$STATUS" != 200 ]]; then
+              python3 -c 'import json;d=json.load(open("/tmp/model-result.json"));e=d.get("error") or {};print("ERROR_TYPE="+str(e.get("type"))+" ERROR_CODE="+str(e.get("code")))' || true
+            fi
+          done
