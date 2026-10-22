@@ -45,7 +45,7 @@ export function startRuntimeServer(port=8080){
       if(req.method==='OPTIONS')return send(res,204,'');
       const path=new URL(req.url||'/','http://localhost').pathname;
       if(req.method==='GET'&&path==='/health')return send(res,200,{
-        ok:true,service:'ai-counselor-sdk',sdkVersion:'1.0.0',
+        ok:true,service:'ai-counselor-sdk',sdkVersion:'1.1.0',
         activeProfile:COUNSELOR_PROFILE.preset,participantEnabled:PARTICIPANT_ENABLED,
         openaiConfigured:configured('OPENAI_API_KEY','OPENAI_API_KEY_FILE','/data/openai_api_key'),
         webrtcKeyConfigured:configured('TEST_LOGIN_KEY','TEST_LOGIN_KEY_FILE','/data/test_login_key')||Boolean(process.env.WEBRTC_TEST_LOGIN_KEY),
