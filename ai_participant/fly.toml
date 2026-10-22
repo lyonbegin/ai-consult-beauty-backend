@@ -1,0 +1,29 @@
+app = "ai-unni-participant"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "ai_participant/Dockerfile"
+
+[env]
+  PORT = "8080"
+  WEBRTC_BASE_URL = "https://webrtc-new.fly.dev"
+  AI_USER_ID = "doctor-2"
+  AI_USER_NAME = "AI언니"
+  AI_PLATFORM_ROLE = "doctor"
+  OPENAI_TRANSCRIBE_MODEL = "gpt-transcribe"
+  OPENAI_CHAT_MODEL = "gpt-6-luna"
+  OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
+  OPENAI_TTS_VOICE = "coral"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
