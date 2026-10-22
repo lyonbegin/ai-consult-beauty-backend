@@ -1,4 +1,6 @@
-import * as wrtc from '@roamhq/wrtc';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const wrtc = require('@roamhq/wrtc');
 import {
   VAD_END_SILENCE_MS,
   VAD_MAX_SPEECH_MS,
