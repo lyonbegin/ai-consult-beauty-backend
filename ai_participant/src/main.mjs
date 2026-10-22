@@ -1,10 +1,17 @@
 import {
+  AI_USER_ID,
+  AI_USER_NAME,
   API_BASE_URL,
-  MAX_ACTIVE_ROOMS,
+  AUTO_CREATE_ROOM,
+  AUTO_PATIENT_ID,
+  AUTO_PATIENT_NAME,
+  AUTO_ROOM_TITLE,
+  AUTO_START_ROOM,
   POLL_MS,
   TARGET_CONSULTATION_ID,
 } from './config.mjs';
 import {
+  createConsultation,
   createSocket,
   emitAck,
   issueToken,
@@ -26,6 +33,21 @@ class RoomClient {
     this.rejoining = false;
   }
 
+  isHost() {
+    return Array.isArray(this.session.hostUserIds) && this.session.hostUserIds.includes(AI_USER_ID);
+  }
+
+  async ensureStartedIfHost() {
+    if (this.live || !AUTO_START_ROOM || !this.isHost() || this.closed) return;
+
+    const started = await emitAck(this.socket, 'session:start', {
+      sessionId: this.sessionId,
+    });
+    this.session = started.session;
+    this.live = this.session.status === 'LIVE';
+    console.log(`[${this.sessionId}] AI doctor started consultation; status=${this.session.status}`);
+  }
+
   async start() {
     const base = this.session.mediaNodePublicUrl || API_BASE_URL;
     this.socket = createSocket(base, this.token);
@@ -37,19 +59,21 @@ class RoomClient {
     this.session = joined.session;
     this.live = this.session.status === 'LIVE';
 
-    try {
-      const ready = await emitAck(this.socket, 'session:ready', {
-        sessionId: this.sessionId,
-        ready: true,
-      });
-      this.session = ready.session;
-      this.live = this.session.status === 'LIVE';
-    } catch (error) {
-      console.warn(`[${this.sessionId}] session:ready failed: ${error.message}`);
-    }
+    const ready = await emitAck(this.socket, 'session:ready', {
+      sessionId: this.sessionId,
+      ready: true,
+    });
+    this.session = ready.session;
+    this.live = this.session.status === 'LIVE';
 
-    console.log(`[${this.sessionId}] AI signaling joined; status=${this.session.status}`);
-    if (this.live) await this.enterRtc();
+    console.log(`[${this.sessionId}] AI doctor joined and ready; status=${this.session.status}`);
+
+    if (!this.live) {
+      await this.ensureStartedIfHost();
+    }
+    if (this.live) {
+      await this.enterRtc();
+    }
   }
 
   bindEvents() {
@@ -84,9 +108,25 @@ class RoomClient {
       const joined = await emitAck(this.socket, 'session:join', { sessionId: this.sessionId });
       this.session = joined.session;
       this.live = this.session.status === 'LIVE';
+
+      try {
+        const ready = await emitAck(this.socket, 'session:ready', {
+          sessionId: this.sessionId,
+          ready: true,
+        });
+        this.session = ready.session;
+        this.live = this.session.status === 'LIVE';
+      } catch {}
+
       const old = this.rtc;
       this.rtc = null;
       await old?.dispose().catch(() => undefined);
+
+      if (!this.live) {
+        await this.ensureStartedIfHost().catch((error) => {
+          console.warn(`[${this.sessionId}] auto-start after reconnect failed: ${error.message}`);
+        });
+      }
       if (this.live) await this.enterRtc();
     } finally {
       this.rejoining = false;
@@ -99,6 +139,7 @@ class RoomClient {
     this.rtc = rtc;
     try {
       await rtc.start();
+      console.log(`[${this.sessionId}] AI doctor is inside RTC room and waiting`);
     } catch (error) {
       this.rtc = null;
       await rtc.dispose().catch(() => undefined);
@@ -125,45 +166,80 @@ class RoomClient {
 const rooms = new Map();
 let shuttingDown = false;
 
-function isEligible(session) {
-  if (!session?.id || ['ENDED', 'CANCELLED'].includes(session.status)) return false;
-  if (TARGET_CONSULTATION_ID && session.id !== TARGET_CONSULTATION_ID) return false;
-  return true;
+function active(session) {
+  return Boolean(session?.id) && !['ENDED', 'CANCELLED'].includes(session.status);
+}
+
+function managed(session) {
+  if (!active(session)) return false;
+  if (TARGET_CONSULTATION_ID) return session.id === TARGET_CONSULTATION_ID;
+  return (
+    session.title === AUTO_ROOM_TITLE &&
+    Array.isArray(session.hostUserIds) &&
+    session.hostUserIds.includes(AI_USER_ID)
+  );
+}
+
+async function ensureManagedSession(token) {
+  const sessions = await listConsultations(token);
+  const existing = sessions.find(managed);
+  if (existing) return existing;
+
+  if (TARGET_CONSULTATION_ID || !AUTO_CREATE_ROOM) return null;
+
+  const created = await createConsultation(token, {
+    title: AUTO_ROOM_TITLE,
+    maxParticipants: 4,
+    participants: [
+      {
+        userId: AI_USER_ID,
+        displayName: AI_USER_NAME,
+        role: 'DOCTOR',
+      },
+      {
+        userId: AUTO_PATIENT_ID,
+        displayName: AUTO_PATIENT_NAME,
+        role: 'PATIENT',
+      },
+    ],
+  });
+
+  console.log(`[${created.id}] AI doctor created consultation "${created.title}" for ${AUTO_PATIENT_ID}`);
+  return created;
 }
 
 async function reconcile(token) {
-  const sessions = await listConsultations(token);
-  const eligible = sessions.filter(isEligible).slice(0, MAX_ACTIVE_ROOMS);
-  const desiredIds = new Set(eligible.map((session) => session.id));
+  const session = await ensureManagedSession(token);
+  const desiredId = session?.id || null;
 
   for (const [sessionId, client] of rooms) {
-    if (!desiredIds.has(sessionId)) {
-      console.log(`[${sessionId}] leaving inactive consultation`);
+    if (sessionId !== desiredId) {
+      console.log(`[${sessionId}] leaving unmanaged consultation`);
       rooms.delete(sessionId);
       await client.close();
     }
   }
 
-  for (const session of eligible) {
-    if (rooms.has(session.id)) continue;
-    console.log(`[${session.id}] discovered consultation; status=${session.status}`);
-    const client = new RoomClient(token, session);
-    rooms.set(session.id, client);
-    try {
-      await client.start();
-    } catch (error) {
-      rooms.delete(session.id);
-      await client.close().catch(() => undefined);
-      console.error(`[${session.id}] join failed`, error);
-    }
+  if (!session || rooms.has(session.id)) return;
+
+  console.log(`[${session.id}] managed consultation found; status=${session.status}`);
+  const client = new RoomClient(token, session);
+  rooms.set(session.id, client);
+
+  try {
+    await client.start();
+  } catch (error) {
+    rooms.delete(session.id);
+    await client.close().catch(() => undefined);
+    console.error(`[${session.id}] join failed`, error);
   }
 }
 
 async function main() {
-  console.log(`[boot] client-only AI participant -> ${API_BASE_URL}`);
+  console.log(`[boot] client-only AI doctor -> ${API_BASE_URL}`);
   console.log('[boot] no HTTP server, no SFU, no signaling server');
   const token = await issueToken();
-  console.log('[boot] AI login succeeded');
+  console.log(`[boot] AI doctor login succeeded as ${AI_USER_ID}`);
 
   while (!shuttingDown) {
     try {
