@@ -1,0 +1,32 @@
+name: Temporary encrypted OpenAI key handoff
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/openai-key-handoff.yml"
+
+jobs:
+  encrypt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Encrypt OpenAI key for Railway handoff
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${OPENAI_API_KEY:-}"
+          cat > /tmp/handoff-public.pem <<'KEY'
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnFjX3QMJoCFxivgvSZt+
+          nn+celDRKfYMH1kD+iZPd4mk0/srOQDoGTP12rtpb4Eb9T2+isJKSHCPV6fFHd2c
+          esONza5jQccCExu5b9Vap8qZ/8kmVGRAVRM2JbMmTvHJIgH/czJbtqvHlWDEE2Df
+          /SEPY954HSY/CmIAZMnXNKJfWM+P/shgK0oxDveLBiR0qPbGp9pMfOFf9ZDkSPFC
+          SDPgGE+H7pAlwJfXb3+2duSKEUVJF0ra0wyZZF8EMj+aQmbfU+lTChUbYB6+nKzj
+          HQOBclrLWWeqBGmPMTEN9hfSXgC0ZnmPm3X9uyVimn7CQ7Fil6jp98aGaFW1lFJ2
+          wwIDAQAB
+          -----END PUBLIC KEY-----
+          KEY
+          printf '%s' "$OPENAI_API_KEY" | openssl pkeyutl -encrypt -pubin -inkey /tmp/handoff-public.pem -pkeyopt rsa_padding_mode:oaep | base64 -w 0 | sed 's/^/OPENAI_CIPHERTEXT_B64=/'
+          echo
+          echo "ENCRYPTED_HANDOFF_OK"
