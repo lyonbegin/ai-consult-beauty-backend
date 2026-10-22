@@ -7,27 +7,29 @@ on:
 jobs:
   encrypt:
     runs-on: ubuntu-latest
+    timeout-minutes: 14
     steps:
-      - name: Encrypt existing validated OpenAI secret without exposing plaintext
+      - name: Encrypt OpenAI key for SDK volume-held public RSA key
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SDK_BASE_URL: https://ai-counselor-sdk-production.up.railway.app
         shell: bash
         run: |
           set -euo pipefail
           [[ "${OPENAI_API_KEY:-}" == sk-* ]]
           echo "::add-mask::$OPENAI_API_KEY"
-          cat > /tmp/railway-key.pem <<'KEY'
-          -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnFjX3QMJoCFxivgvSZt+
-          nn+celDRKfYMH1kD+iZPd4mk0/srOQDoGTP12rtpb4Eb9T2+isJKSHCPV6fFHd2c
-          esONza5jQccCExu5b9Vap8qZ/8kmVGRAVRM2JbMmTvHJIgH/czJbtqvHlWDEE2Df
-          /SEPY954HSY/CmIAZMnXNKJfWM+P/shgK0oxDveLBiR0qPbGp9pMfOFf9ZDkSPFC
-          SDPgGE+H7pAlwJfXb3+2duSKEUVJF0ra0wyZZF8EMj+aQmbfU+lTChUbYB6+nKzj
-          HQOBclrLWWeqBGmPMTEN9hfSXgC0ZnmPm3X9uyVimn7CQ7Fil6jp98aGaFW1lFJ2
-          wwIDAQAB
-          -----END PUBLIC KEY-----
-          KEY
-          CIPHER="$(printf '%s' "$OPENAI_API_KEY" | openssl pkeyutl -encrypt -pubin -inkey /tmp/railway-key.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha1 | base64 -w 0)"
+          READY=0
+          for attempt in $(seq 1 120); do
+            if curl -fsS --connect-timeout 5 --max-time 10 "$SDK_BASE_URL/internal/bootstrap/public-key" -o /tmp/sdk-public.json 2>/dev/null; then
+              if python3 -c 'import json; x=json.load(open("/tmp/sdk-public.json")); assert x["algorithm"]=="RSA-OAEP-SHA256"; assert x["publicKey"].startswith("-----BEGIN PUBLIC KEY-----"); open("/tmp/sdk-public.pem","w").write(x["publicKey"])' 2>/dev/null; then
+                READY=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          test "$READY" -eq 1
+          CIPHER="$(printf '%s' "$OPENAI_API_KEY" | openssl pkeyutl -encrypt -pubin -inkey /tmp/sdk-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 | base64 -w 0)"
           OPENAI_API_KEY=''
-          echo "SDK_OPENAI_CIPHERTEXT_B64=$CIPHER"
-          echo "ENCRYPTED_SDK_HANDOFF_READY"
+          echo "SDK_OPENAI_RSA256_CIPHERTEXT_B64=$CIPHER"
+          echo "SDK_RSA256_ENCRYPTED_HANDOFF_READY"
