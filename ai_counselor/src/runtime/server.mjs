@@ -1,7 +1,7 @@
 import http from 'node:http';
-import { constants, privateDecrypt } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants, generateKeyPairSync, privateDecrypt } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CounselorSession } from '../core/session.mjs';
@@ -46,6 +46,14 @@ function testLoginFile() {
   return String(process.env.TEST_LOGIN_KEY_FILE || '/data/test_login_key');
 }
 
+function bootstrapPrivateFile() {
+  return String(process.env.BOOTSTRAP_PRIVATE_KEY_FILE || '/data/bootstrap-private.pem');
+}
+
+function bootstrapPublicFile() {
+  return String(process.env.BOOTSTRAP_PUBLIC_KEY_FILE || '/data/bootstrap-public.pem');
+}
+
 function openAIConfigured() {
   return Boolean(String(process.env.OPENAI_API_KEY || '').trim()) || existsSync(openAIFile());
 }
@@ -54,14 +62,31 @@ function webrtcKeyConfigured() {
   return Boolean(String(process.env.WEBRTC_TEST_LOGIN_KEY || process.env.TEST_LOGIN_KEY || '').trim()) || existsSync(testLoginFile());
 }
 
+function ensureBootstrapKeypair() {
+  const privatePath = bootstrapPrivateFile();
+  const publicPath = bootstrapPublicFile();
+  if (existsSync(privatePath) && existsSync(publicPath)) {
+    return readFileSync(publicPath, 'utf8');
+  }
+
+  mkdirSync(dirname(privatePath), { recursive: true });
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  writeFileSync(privatePath, privateKey, { encoding: 'utf8', mode: 0o600 });
+  writeFileSync(publicPath, publicKey, { encoding: 'utf8', mode: 0o644 });
+  return publicKey;
+}
+
 function decryptBootstrapCiphertext(body) {
-  const privateKeyB64 = String(process.env.BOOTSTRAP_PRIVATE_KEY_B64 || '').trim();
-  if (!privateKeyB64) throw new Error('bootstrap is disabled');
   const ciphertextB64 = String(body?.ciphertext || '').trim();
   if (!ciphertextB64) throw new Error('ciphertext is required');
+  ensureBootstrapKeypair();
   return privateDecrypt(
     {
-      key: Buffer.from(privateKeyB64, 'base64').toString('utf8'),
+      key: readFileSync(bootstrapPrivateFile(), 'utf8'),
       padding: constants.RSA_PKCS1_OAEP_PADDING,
       oaepHash: 'sha1',
     },
@@ -69,9 +94,9 @@ function decryptBootstrapCiphertext(body) {
   ).toString('utf8').trim();
 }
 
-async function persistSecret(target, value) {
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, value, { encoding: 'utf8', mode: 0o600 });
+function persistSecret(target, value) {
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, value, { encoding: 'utf8', mode: 0o600 });
 }
 
 async function bootstrapOpenAIKey(body) {
@@ -87,7 +112,7 @@ async function bootstrapOpenAIKey(body) {
     throw new Error(`OpenAI credential validation failed: HTTP ${validation.status}`);
   }
 
-  await persistSecret(openAIFile(), apiKey);
+  persistSecret(openAIFile(), apiKey);
   apiKey = '';
   return { stored: true };
 }
@@ -115,7 +140,7 @@ async function bootstrapWebRTCKey(body) {
     throw new Error(`WebRTC login credential validation failed: HTTP ${validation.status}`);
   }
 
-  await persistSecret(testLoginFile(), key);
+  persistSecret(testLoginFile(), key);
   key = '';
   return { stored: true };
 }
@@ -150,6 +175,15 @@ export function startRuntimeServer(port) {
           ok: true,
           service: 'ai-counselor-runtime',
           sdkVersion: '0.1.0',
+          openaiConfigured: openAIConfigured(),
+          webrtcKeyConfigured: webrtcKeyConfigured(),
+        });
+      }
+
+      if (req.method === 'GET' && url.pathname === '/internal/bootstrap/public-key') {
+        return send(res, 200, {
+          algorithm: 'RSA-OAEP-SHA1',
+          publicKey: ensureBootstrapKeypair(),
           openaiConfigured: openAIConfigured(),
           webrtcKeyConfigured: webrtcKeyConfigured(),
         });
