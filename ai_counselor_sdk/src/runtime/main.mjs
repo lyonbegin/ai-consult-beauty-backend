@@ -1,6 +1,8 @@
 import {PORT,PARTICIPANT_ENABLED,COUNSELOR_PROFILE} from './config.mjs';
 import {startRuntimeServer} from './server.mjs';
 import {runParticipant,stopParticipant} from './participant.mjs';
+import {restoreCredentialFiles} from './restore-credentials.mjs';
+await restoreCredentialFiles();
 const server=startRuntimeServer(PORT);
 console.log('[boot] AI Counselor SDK v1.0.0 / preset='+COUNSELOR_PROFILE.preset+' / domain='+COUNSELOR_PROFILE.domain);
 let participantTask=null;
