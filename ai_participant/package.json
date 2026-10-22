@@ -1,0 +1,17 @@
+{
+  "name": "ai-unni-webrtc-participant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "mkdir -p dist && esbuild src/browser/agent.js --bundle --platform=browser --format=iife --target=chrome120 --outfile=dist/agent.js",
+    "start": "node src/server.mjs",
+    "check": "node --check src/server.mjs && node --check src/browser/agent.js"
+  },
+  "dependencies": {
+    "esbuild": "^0.25.11",
+    "mediasoup-client": "^3.18.5",
+    "playwright": "^1.56.1",
+    "socket.io-client": "^4.8.1"
+  }
+}
