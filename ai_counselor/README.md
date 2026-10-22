@@ -56,3 +56,7 @@ console.log(result.text);
 - `interview`: 취업·모의면접 상담사
 
 프리셋은 예시일 뿐이며 모든 프로젝트는 `domain`, `role`, `objective`, `instructions`, `tools`, `policy`를 외부에서 덮어써서 동일 SDK를 재사용할 수 있습니다.
+
+
+## 자격증명 이관 호환
+Railway 볼륨의 bootstrap keypair를 기본으로 사용하며, 이전 배포에서 설정된 `BOOTSTRAP_PRIVATE_KEY_B64`도 복호화 fallback으로 지원합니다. 비밀값 자체는 브라우저 SDK나 공개 저장소에 포함하지 않습니다.

@@ -80,18 +80,37 @@ function ensureBootstrapKeypair() {
   return publicKey;
 }
 
+function bootstrapPrivateKeys() {
+  const keys = [];
+  const legacyB64 = String(process.env.BOOTSTRAP_PRIVATE_KEY_B64 || '').trim();
+  if (legacyB64) {
+    try { keys.push(Buffer.from(legacyB64, 'base64').toString('utf8')); } catch {}
+  }
+  ensureBootstrapKeypair();
+  keys.push(readFileSync(bootstrapPrivateFile(), 'utf8'));
+  return [...new Set(keys.filter(Boolean))];
+}
+
 function decryptBootstrapCiphertext(body) {
   const ciphertextB64 = String(body?.ciphertext || '').trim();
   if (!ciphertextB64) throw new Error('ciphertext is required');
-  ensureBootstrapKeypair();
-  return privateDecrypt(
-    {
-      key: readFileSync(bootstrapPrivateFile(), 'utf8'),
-      padding: constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: 'sha1',
-    },
-    Buffer.from(ciphertextB64, 'base64'),
-  ).toString('utf8').trim();
+  const ciphertext = Buffer.from(ciphertextB64, 'base64');
+  let lastError = null;
+  for (const key of bootstrapPrivateKeys()) {
+    try {
+      return privateDecrypt(
+        {
+          key,
+          padding: constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha1',
+        },
+        ciphertext,
+      ).toString('utf8').trim();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('unable to decrypt bootstrap ciphertext');
 }
 
 function persistSecret(target, value) {
@@ -174,7 +193,7 @@ export function startRuntimeServer(port) {
         return send(res, 200, {
           ok: true,
           service: 'ai-counselor-runtime',
-          sdkVersion: '0.1.0',
+          sdkVersion: '0.2.0',
           openaiConfigured: openAIConfigured(),
           webrtcKeyConfigured: webrtcKeyConfigured(),
         });
