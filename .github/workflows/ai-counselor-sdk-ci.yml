@@ -1,0 +1,24 @@
+name: AI Counselor SDK v1 CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ai_counselor_sdk/**'
+      - '.github/workflows/ai-counselor-sdk-ci.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: ai_counselor_sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install SDK and runtime dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate source, test presets and build distributable SDK
+        run: npm run build
