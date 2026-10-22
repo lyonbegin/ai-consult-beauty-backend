@@ -1,0 +1,57 @@
+name: Validate existing OpenAI credentials for AI Counselor migration
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/validate-ai-counselor-openai-source.yml"]
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions: {contents: read}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Check GitHub OpenAI secret without outputting its value
+        env:
+          CANDIDATE: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CANDIDATE:-}" ]]; then
+            echo "GITHUB_OPENAI_SOURCE=missing"
+          elif [[ "$CANDIDATE" != sk-* ]]; then
+            echo "GITHUB_OPENAI_SOURCE=wrong-format"
+          else
+            echo "::add-mask::$CANDIDATE"
+            STATUS="$(curl --connect-timeout 8 --max-time 20 -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer $CANDIDATE" https://api.openai.com/v1/models || true)"
+            if [[ "$STATUS" == 200 ]]; then
+              echo "GITHUB_OPENAI_SOURCE=valid"
+            else
+              echo "GITHUB_OPENAI_SOURCE=api-$STATUS"
+            fi
+          fi
+      - name: Check Fly AI participant OpenAI secret without outputting its value
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FLY_API_TOKEN:-}"
+          MACHINE="$(flyctl machines list -a ai-unni-participant --json | python3 -c 'import json,sys; m=json.load(sys.stdin); print(m[0]["id"] if m else "")')"
+          test -n "$MACHINE"
+          flyctl machine start "$MACHINE" -a ai-unni-participant >/dev/null 2>&1 || true
+          KEY="$(timeout 45s flyctl ssh console -q -a ai-unni-participant -C 'printenv OPENAI_API_KEY' 2>/dev/null | tail -n 1 | tr -d '\r\n' || true)"
+          if [[ -z "$KEY" ]]; then
+            echo "FLY_OPENAI_SOURCE=missing"
+          elif [[ "$KEY" != sk-* ]]; then
+            echo "FLY_OPENAI_SOURCE=wrong-format"
+          else
+            echo "::add-mask::$KEY"
+            STATUS="$(curl --connect-timeout 8 --max-time 20 -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer $KEY" https://api.openai.com/v1/models || true)"
+            if [[ "$STATUS" == 200 ]]; then
+              echo "FLY_OPENAI_SOURCE=valid"
+            else
+              echo "FLY_OPENAI_SOURCE=api-$STATUS"
+            fi
+          fi
