@@ -2,7 +2,7 @@ app = "ai-unni-participant"
 primary_region = "nrt"
 
 [build]
-  dockerfile = "ai_participant/Dockerfile"
+  dockerfile = "Dockerfile"
 
 [env]
   WEBRTC_BASE_URL = "https://webrtc-new.fly.dev"
