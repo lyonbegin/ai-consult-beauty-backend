@@ -1,50 +1,62 @@
 # AI Unni WebRTC Participant
 
-A standalone AI participant for the existing `webrtc-new.fly.dev` mediasoup consultation rooms.
+This directory contains a **client-only** AI participant for the existing `webrtc-new.fly.dev` service.
 
-## First milestone
+It does not create or replace any WebRTC server, SFU, signaling server, room server, or HTTP API. The Fly process opens no inbound application port. It behaves only like another participant connecting outbound to the existing service.
 
-`remote WebRTC audio -> speech-to-text -> OpenAI Responses API -> text-to-speech -> WebRTC audio publish`
+## Flow
 
-No camera analysis, no medical RAG, no LangGraph, and no GPT-Live are used in this first milestone.
+```text
+webrtc-new.fly.dev (existing server, unchanged)
+        ↑                   ↓
+  AI audio publish     remote audio consume
+        ↑                   ↓
+ RTCAudioSource       RTCAudioSink
+        ↑                   ↓
+      TTS PCM       VAD -> WAV -> STT
+        ↑                   ↓
+        └──── Responses API ────┘
+```
 
-## Existing test convention
+The Node endpoint uses the same existing application protocol as the browser client:
 
-The current telemedicine frontend already supports a consulting doctor account `doctor-2`. For the first test, create a consultation with `doctor-2` in **협진 의사 ID**. The AI service logs in as that participant by default.
+- `POST /auth/dev-token`
+- `GET /telemedicine/consultations/me`
+- Socket.IO namespace `/realtime`
+- `session:join`, `session:ready`
+- `rtc:join`, `rtc:create-transport`, `rtc:connect-transport`
+- `rtc:produce`, `rtc:consume`, `rtc:resume-consumer`, `rtc:list-producers`
 
-## Required environment
+No server-side event or endpoint is added.
+
+## Browserless WebRTC
+
+The client uses:
+
+- `mediasoup-client`
+- `mediasoup-client-wrtc`
+- `@roamhq/wrtc`
+
+`RTCAudioSink` provides raw PCM from the other participant. `RTCAudioSource` provides raw PCM for the AI participant's outgoing audio. Chromium/Playwright is not used.
+
+## First test
+
+1. Existing host creates a consultation in the current UI.
+2. Add `doctor-2` in the **협진 의사 ID** field.
+3. This client is already logged in as `doctor-2`, finds the consultation through `/telemedicine/consultations/me`, joins it, and marks itself ready.
+4. Host presses **진료 시작**.
+5. AI client runs `rtc:join` against the existing media server, consumes the user's audio, transcribes it, calls the normal Responses API, converts the reply to PCM, and publishes that PCM as its WebRTC microphone track.
+
+For a fixed room during debugging, set `CONSULTATION_ID`.
+
+## Required secret
 
 - `OPENAI_API_KEY`
-- `WEBRTC_BASE_URL` defaults to `https://webrtc-new.fly.dev`
-- `AI_USER_ID` defaults to `doctor-2`
-- `WEBRTC_TEST_LOGIN_KEY` only if the realtime server requires `x-test-login-key`
 
-## Control API
+Optional if the existing dev-login endpoint requires it:
 
-### Health
+- `WEBRTC_TEST_LOGIN_KEY`
 
-`GET /health`
+## Important
 
-### Join a consultation
-
-`POST /join`
-
-```json
-{ "consultationId": "..." }
-```
-
-### Inspect state
-
-`GET /status`
-
-### Leave
-
-`POST /leave`
-
-```json
-{ "agentId": "..." }
-```
-
-## Fly deployment
-
-The root repository workflow `.github/workflows/deploy-ai-participant-fly.yml` builds and deploys this Dockerfile. Store `FLY_API_TOKEN` and `OPENAI_API_KEY` as GitHub Actions secrets. If the WebRTC server uses a test-login key, also store `WEBRTC_TEST_LOGIN_KEY`.
+`gpt-4o-mini-tts` is used only as the initial non-Live TTS implementation and is configurable with `OPENAI_TTS_MODEL`. The media architecture is independent of OpenAI TTS and can later be replaced without touching the WebRTC server.
