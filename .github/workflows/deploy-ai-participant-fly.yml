@@ -40,7 +40,7 @@ jobs:
           ORG="$INPUT_ORG"
           if ! flyctl status -a "$APP" >/dev/null 2>&1; then
             if [ -z "$ORG" ]; then
-              ORG="$(flyctl apps list --json | python3 -c 'import json,sys; x=json.load(sys.stdin); apps=x if isinstance(x,list) else x.get("apps", []); target=next((a for a in apps if (a.get("Name") or a.get("name"))=="webrtc-new"), None); fallback=(apps[0] if apps else {}); a=target or fallback; print(a.get("Organization") or a.get("organization") or "")')"
+              ORG="$(flyctl apps list --json | python3 -c 'import json,sys; x=json.load(sys.stdin); apps=x if isinstance(x,list) else x.get("apps", []); target=next((a for a in apps if (a.get("Name") or a.get("name"))=="webrtc-new"), None); a=target or (apps[0] if apps else {}); o=a.get("Organization") or a.get("organization") or ""; print((o.get("Slug") or o.get("slug") or o.get("Name") or o.get("name") or "") if isinstance(o,dict) else o)'"
             fi
             test -n "$ORG"
             flyctl apps create "$APP" --org "$ORG"
