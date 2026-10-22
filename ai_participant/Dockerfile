@@ -1,13 +1,9 @@
-FROM node:22-bookworm
+FROM node:22-bookworm-slim
 
-WORKDIR /app/ai_participant
+WORKDIR /app
 COPY ai_participant/package.json ./package.json
-RUN npm install
-RUN npx playwright install --with-deps chromium
+RUN npm install --omit=dev
+COPY ai_participant/src ./src
 
-COPY ai_participant/ ./
-RUN npm run build
-
-ENV PORT=8080
-EXPOSE 8080
+ENV NODE_ENV=production
 CMD ["npm", "start"]
