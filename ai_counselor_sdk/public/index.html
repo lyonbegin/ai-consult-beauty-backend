@@ -42,6 +42,17 @@ el('mask').addEventListener('click',async()=>{error(null);el('mask').disabled=tr
 el('preset').addEventListener('change',()=>{preset();apply();});el('apply').addEventListener('click',apply);
 el('send').addEventListener('click',async()=>{error(null);const text=el('message').value.trim(),token=el('token').value.trim();if(!text)return;if(!token){error('텍스트 API 개발자 테스트에는 인증 토큰이 필요합니다.');return;}el('send').disabled=true;counselor.accessToken=token;try{const r=await counselor.respond(text,{surface:'playground'});el('messages').textContent=r.text;el('trace').textContent=JSON.stringify(r.trace,null,2);}catch(e){error(e);}finally{el('send').disabled=false;}});
 fetch('/health').then(r=>r.json()).then(h=>{el('status').textContent='AI 런타임 '+(h.ok?'정상':'오류');el('room-status').textContent=h.participantEnabled?'AI Participant 활성':'AI Participant 비활성';el('assistant-state').textContent=h.participantEnabled?'서버 참가자 기능 활성 · 실제 입장 여부는 별도 확인':'진료실 AI 상담사 미입점 (Participant off)';el('connection-notice').textContent=h.participantEnabled?'카메라 연결은 VideoCore가 담당합니다. 양방향 통화는 기존 WebRTC 진료실의 세션과 roomAdapter가 연결돼야 합니다.':'현재 서버의 WebRTC 상담사 참가 기능이 꺼져 있어 양방향 통화는 시작되지 않습니다. 영상 코어 카메라·가면 기능은 직접 테스트할 수 있습니다.';}).catch(e=>{el('status').textContent='서버 연결 실패';error(e);});
+fetch('/v1/rooms/status').then(r=>r.json()).then(data=>{
+ const live=(data.rooms||[]).find(x=>x.live&&x.joined&&x.rtcConnected);
+ if(live){
+  el('room-status').textContent='실제 WebRTC 진료실 LIVE';
+  el('assistant-state').textContent='AI 상담사 입점 · RTC 연결 완료';
+  el('connection-notice').textContent='AI 상담사가 "'+live.title+'" 진료실에서 대기 중입니다. 상담방 ID: '+live.roomId+'. 방문자 입장은 기존 WebRTC roomAdapter 연동 후 가능합니다.';
+ }else if(data.participantEnabled){
+  el('room-status').textContent='AI 상담사 진료실 연결 중';
+  el('assistant-state').textContent='서버 AI 참가자 활성 · RTC 연결 대기';
+ }
+}).catch(e=>{el('room-status').textContent='진료실 상태 조회 실패';});
 const checker=sdk.AICounselor.create({endpoint:location.origin});checker.loadVideoCore().then(()=>el('core-state').textContent='영상 코어 연결됨 · '+checker.videoCoreVersion).catch(e=>{el('core-state').textContent='영상 코어 불러오기 실패';error(e);});
 window.addEventListener('beforeunload',stop);preset();apply();controls(false);
 </script></body></html>
