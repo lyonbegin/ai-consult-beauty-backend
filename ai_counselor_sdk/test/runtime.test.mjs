@@ -12,7 +12,7 @@ test('runtime serves health and all five domain presets',async()=>{
   assert.equal(health.status,200);
   const h=await health.json();
   assert.equal(h.service,'ai-counselor-sdk');
-  assert.equal(h.sdkVersion,'1.0.0');
+  assert.equal(h.sdkVersion,'1.1.0');
   assert.equal(h.activeProfile,'generic');
   const presets=await fetch(base+'/v1/presets');
   assert.equal(presets.status,200);
