@@ -4,7 +4,7 @@ import {runParticipant,stopParticipant} from './participant.mjs';
 import {restoreCredentialFiles} from './restore-credentials.mjs';
 await restoreCredentialFiles();
 const server=startRuntimeServer(PORT);
-console.log('[boot] AI Counselor SDK v1.0.0 / preset='+COUNSELOR_PROFILE.preset+' / domain='+COUNSELOR_PROFILE.domain);
+console.log('[boot] AI Counselor SDK v1.1.0 / preset='+COUNSELOR_PROFILE.preset+' / domain='+COUNSELOR_PROFILE.domain);
 let participantTask=null;
 if(PARTICIPANT_ENABLED)participantTask=runParticipant().catch(e=>console.error('[participant] fatal',e.message));
 else console.log('[participant] disabled until credentials and room are verified');
