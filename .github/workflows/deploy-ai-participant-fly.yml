@@ -1,6 +1,12 @@
 name: Deploy AI WebRTC Participant to Fly
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ai_participant/**"
+      - ".github/workflows/deploy-ai-participant-fly.yml"
   workflow_dispatch:
     inputs:
       app_name:
@@ -25,10 +31,11 @@ jobs:
         id: fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          INPUT_APP: ${{ inputs.app_name }}
-          INPUT_ORG: ${{ inputs.org_slug }}
+          INPUT_APP: ${{ github.event.inputs.app_name || 'ai-unni-participant' }}
+          INPUT_ORG: ${{ github.event.inputs.org_slug || '' }}
         run: |
           set -euo pipefail
+          test -n "${FLY_API_TOKEN:-}"
           APP="${INPUT_APP:-ai-unni-participant}"
           ORG="$INPUT_ORG"
           if ! flyctl status -a "$APP" >/dev/null 2>&1; then
