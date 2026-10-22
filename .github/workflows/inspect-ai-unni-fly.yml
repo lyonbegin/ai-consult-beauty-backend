@@ -1,0 +1,26 @@
+name: Inspect AI participant on Fly
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/inspect-ai-unni-fly.yml"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Status
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl status -a ai-unni-participant
+      - name: Recent logs
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          sleep 5
+          set +e
+          timeout 12s flyctl logs -a ai-unni-participant
+          exit 0
