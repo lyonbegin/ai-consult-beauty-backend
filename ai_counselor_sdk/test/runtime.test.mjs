@@ -18,6 +18,11 @@ test('runtime serves health and all five domain presets',async()=>{
   assert.equal(presets.status,200);
   const names=Object.keys(await presets.json());
   assert.deepEqual(names,['generic','beauty','elderly-care','tutoring','interview']);
+  const videoRooms=await fetch(base+'/v1/rooms/status');
+  assert.equal(videoRooms.status,200);
+  const videoState=await videoRooms.json();
+  assert.equal(Array.isArray(videoState.rooms),true);
+  assert.equal(typeof videoState.participantEnabled,'boolean');
   const unauth=await fetch(base+'/v1/respond',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:'test',text:'hello'})});
   assert.equal(unauth.status,401);
  }finally{await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
