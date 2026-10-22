@@ -43,20 +43,6 @@ jobs:
           fi
           echo "app=$APP" >> "$GITHUB_OUTPUT"
 
-      - name: Set runtime secrets
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          APP: ${{ steps.fly.outputs.app }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          WEBRTC_TEST_LOGIN_KEY: ${{ secrets.WEBRTC_TEST_LOGIN_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "${OPENAI_API_KEY:-}"
-          flyctl secrets set OPENAI_API_KEY="$OPENAI_API_KEY" -a "$APP"
-          if [ -n "${WEBRTC_TEST_LOGIN_KEY:-}" ]; then
-            flyctl secrets set WEBRTC_TEST_LOGIN_KEY="$WEBRTC_TEST_LOGIN_KEY" -a "$APP"
-          fi
-
       - name: Deploy client worker
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
