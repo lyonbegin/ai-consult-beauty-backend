@@ -1,0 +1,42 @@
+name: Temporary encrypted WebRTC login key handoff
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/webrtc-key-handoff.yml"
+  workflow_dispatch:
+
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Encrypt existing webrtc-new login key and hand it directly to Railway
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          RUNTIME_URL: https://ai-counselor-runtime-production-9fa8.up.railway.app
+        run: |
+          set -euo pipefail
+          test -n "${FLY_API_TOKEN:-}"
+          cat > /tmp/handoff-public.pem <<'KEY'
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnFjX3QMJoCFxivgvSZt+
+          nn+celDRKfYMH1kD+iZPd4mk0/srOQDoGTP12rtpb4Eb9T2+isJKSHCPV6fFHd2c
+          esONza5jQccCExu5b9Vap8qZ/8kmVGRAVRM2JbMmTvHJIgH/czJbtqvHlWDEE2Df
+          /SEPY954HSY/CmIAZMnXNKJfWM+P/shgK0oxDveLBiR0qPbGp9pMfOFf9ZDkSPFC
+          SDPgGE+H7pAlwJfXb3+2duSKEUVJF0ra0wyZZF8EMj+aQmbfU+lTChUbYB6+nKzj
+          HQOBclrLWWeqBGmPMTEN9hfSXgC0ZnmPm3X9uyVimn7CQ7Fil6jp98aGaFW1lFJ2
+          wwIDAQAB
+          -----END PUBLIC KEY-----
+          KEY
+          KEY_VALUE="$(timeout 45s flyctl ssh console -q -a webrtc-new -C 'printenv TEST_LOGIN_KEY' 2>/dev/null | tail -n 1 | tr -d '\r\n')"
+          test -n "$KEY_VALUE"
+          echo "::add-mask::$KEY_VALUE"
+          CIPHERTEXT="$(printf '%s' "$KEY_VALUE" | openssl pkeyutl -encrypt -pubin -inkey /tmp/handoff-public.pem -pkeyopt rsa_padding_mode:oaep | base64 -w 0)"
+          KEY_VALUE=""
+          BODY="$(printf '%s' "$CIPHERTEXT" | python3 -c 'import json,sys; print(json.dumps({"ciphertext":sys.stdin.read()}))')"
+          curl --fail --silent --show-error --retry 24 --retry-delay 5 --retry-all-errors             -H 'content-type: application/json' --data-binary "$BODY"             "$RUNTIME_URL/internal/bootstrap/webrtc"
+          echo
+          curl --fail --silent --show-error "$RUNTIME_URL/health" | grep -q '"webrtcKeyConfigured":true'
+          echo "WEBRTC_KEY_HANDOFF_OK"

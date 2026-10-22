@@ -14,7 +14,7 @@ jobs:
       - name: Encrypt GitHub OpenAI secret and hand it directly to Railway
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          RUNTIME_URL: https://ai-counselor-runtime-production.up.railway.app
+          RUNTIME_URL: https://ai-counselor-runtime-production-9fa8.up.railway.app
         run: |
           set -euo pipefail
           test -n "${OPENAI_API_KEY:-}"
@@ -31,7 +31,7 @@ jobs:
           KEY
           CIPHERTEXT="$(printf '%s' "$OPENAI_API_KEY" | openssl pkeyutl -encrypt -pubin -inkey /tmp/handoff-public.pem -pkeyopt rsa_padding_mode:oaep | base64 -w 0)"
           BODY="$(printf '%s' "$CIPHERTEXT" | python3 -c 'import json,sys; print(json.dumps({"ciphertext":sys.stdin.read()}))')"
-          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors             -H 'content-type: application/json'             --data-binary "$BODY"             "$RUNTIME_URL/internal/bootstrap/openai"
+          curl --fail --silent --show-error --retry 24 --retry-delay 5 --retry-all-errors             -H 'content-type: application/json' --data-binary "$BODY"             "$RUNTIME_URL/internal/bootstrap/openai"
           echo
           curl --fail --silent --show-error "$RUNTIME_URL/health" | grep -q '"openaiConfigured":true'
           echo "OPENAI_HANDOFF_OK"

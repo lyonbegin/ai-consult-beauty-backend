@@ -1,17 +1,32 @@
+import { readFileSync } from 'node:fs';
 import { io } from 'socket.io-client';
 import {
   AI_PLATFORM_ROLE,
   AI_USER_ID,
   AI_USER_NAME,
   TEST_LOGIN_KEY,
+  TEST_LOGIN_KEY_FILE,
   WEBRTC_BASE_URL,
 } from './config.mjs';
+
+function resolveTestLoginKey() {
+  if (TEST_LOGIN_KEY) return TEST_LOGIN_KEY;
+  if (!TEST_LOGIN_KEY_FILE) return '';
+  try {
+    return readFileSync(TEST_LOGIN_KEY_FILE, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
 
 export async function apiRequest(path, { method = 'GET', token, body } = {}) {
   const headers = {};
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers['content-type'] = 'application/json';
-  if (path === '/auth/dev-token' && TEST_LOGIN_KEY) headers['x-test-login-key'] = TEST_LOGIN_KEY;
+  if (path === '/auth/dev-token') {
+    const testLoginKey = resolveTestLoginKey();
+    if (testLoginKey) headers['x-test-login-key'] = testLoginKey;
+  }
 
   const response = await fetch(`${WEBRTC_BASE_URL}${path}`, {
     method,

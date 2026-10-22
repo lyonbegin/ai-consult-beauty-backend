@@ -38,12 +38,86 @@ async function readJson(req) {
   return text ? JSON.parse(text) : {};
 }
 
-function secretFile() {
+function openAIFile() {
   return String(process.env.OPENAI_API_KEY_FILE || '/data/openai_api_key');
 }
 
+function testLoginFile() {
+  return String(process.env.TEST_LOGIN_KEY_FILE || '/data/test_login_key');
+}
+
 function openAIConfigured() {
-  return Boolean(String(process.env.OPENAI_API_KEY || '').trim()) || existsSync(secretFile());
+  return Boolean(String(process.env.OPENAI_API_KEY || '').trim()) || existsSync(openAIFile());
+}
+
+function webrtcKeyConfigured() {
+  return Boolean(String(process.env.WEBRTC_TEST_LOGIN_KEY || process.env.TEST_LOGIN_KEY || '').trim()) || existsSync(testLoginFile());
+}
+
+function decryptBootstrapCiphertext(body) {
+  const privateKeyB64 = String(process.env.BOOTSTRAP_PRIVATE_KEY_B64 || '').trim();
+  if (!privateKeyB64) throw new Error('bootstrap is disabled');
+  const ciphertextB64 = String(body?.ciphertext || '').trim();
+  if (!ciphertextB64) throw new Error('ciphertext is required');
+  return privateDecrypt(
+    {
+      key: Buffer.from(privateKeyB64, 'base64').toString('utf8'),
+      padding: constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha1',
+    },
+    Buffer.from(ciphertextB64, 'base64'),
+  ).toString('utf8').trim();
+}
+
+async function persistSecret(target, value) {
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, value, { encoding: 'utf8', mode: 0o600 });
+}
+
+async function bootstrapOpenAIKey(body) {
+  if (openAIConfigured()) return { alreadyConfigured: true };
+  let apiKey = decryptBootstrapCiphertext(body);
+  if (!apiKey.startsWith('sk-')) throw new Error('decrypted OpenAI credential has invalid format');
+
+  const validation = await fetch('https://api.openai.com/v1/models', {
+    headers: { authorization: `Bearer ${apiKey}` },
+  });
+  if (!validation.ok) {
+    apiKey = '';
+    throw new Error(`OpenAI credential validation failed: HTTP ${validation.status}`);
+  }
+
+  await persistSecret(openAIFile(), apiKey);
+  apiKey = '';
+  return { stored: true };
+}
+
+async function bootstrapWebRTCKey(body) {
+  if (webrtcKeyConfigured()) return { alreadyConfigured: true };
+  let key = decryptBootstrapCiphertext(body);
+  if (!key) throw new Error('decrypted WebRTC credential is empty');
+
+  const base = String(process.env.WEBRTC_BASE_URL || 'https://webrtc-new.fly.dev').replace(/\/$/, '');
+  const validation = await fetch(`${base}/auth/dev-token`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-test-login-key': key,
+    },
+    body: JSON.stringify({
+      userId: process.env.AI_USER_ID || 'doctor-1',
+      name: process.env.AI_USER_NAME || 'AI 상담사',
+      platformRole: process.env.AI_PLATFORM_ROLE || 'doctor',
+    }),
+  });
+  if (!validation.ok) {
+    key = '';
+    throw new Error(`WebRTC login credential validation failed: HTTP ${validation.status}`);
+  }
+
+  await persistSecret(testLoginFile(), key);
+  key = '';
+  return { stored: true };
 }
 
 function getSession(sessionId, profile) {
@@ -65,40 +139,6 @@ async function fileResponse(res, path, contentType) {
   }
 }
 
-async function bootstrapOpenAIKey(body) {
-  if (openAIConfigured()) return { alreadyConfigured: true };
-
-  const privateKeyB64 = String(process.env.BOOTSTRAP_PRIVATE_KEY_B64 || '').trim();
-  if (!privateKeyB64) throw new Error('bootstrap is disabled');
-  const ciphertextB64 = String(body?.ciphertext || '').trim();
-  if (!ciphertextB64) throw new Error('ciphertext is required');
-
-  let apiKey = privateDecrypt(
-    {
-      key: Buffer.from(privateKeyB64, 'base64').toString('utf8'),
-      padding: constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: 'sha1',
-    },
-    Buffer.from(ciphertextB64, 'base64'),
-  ).toString('utf8').trim();
-
-  if (!apiKey.startsWith('sk-')) throw new Error('decrypted credential has invalid format');
-
-  const validation = await fetch('https://api.openai.com/v1/models', {
-    headers: { authorization: `Bearer ${apiKey}` },
-  });
-  if (!validation.ok) {
-    apiKey = '';
-    throw new Error(`OpenAI credential validation failed: HTTP ${validation.status}`);
-  }
-
-  const target = secretFile();
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, apiKey, { encoding: 'utf8', mode: 0o600 });
-  apiKey = '';
-  return { stored: true };
-}
-
 export function startRuntimeServer(port) {
   const server = http.createServer(async (req, res) => {
     try {
@@ -111,6 +151,7 @@ export function startRuntimeServer(port) {
           service: 'ai-counselor-runtime',
           sdkVersion: '0.1.0',
           openaiConfigured: openAIConfigured(),
+          webrtcKeyConfigured: webrtcKeyConfigured(),
         });
       }
 
@@ -131,8 +172,11 @@ export function startRuntimeServer(port) {
       }
 
       if (req.method === 'POST' && url.pathname === '/internal/bootstrap/openai') {
-        const result = await bootstrapOpenAIKey(await readJson(req));
-        return send(res, 200, { ok: true, ...result });
+        return send(res, 200, { ok: true, ...await bootstrapOpenAIKey(await readJson(req)) });
+      }
+
+      if (req.method === 'POST' && url.pathname === '/internal/bootstrap/webrtc') {
+        return send(res, 200, { ok: true, ...await bootstrapWebRTCKey(await readJson(req)) });
       }
 
       if (req.method === 'POST' && url.pathname === '/v1/respond') {

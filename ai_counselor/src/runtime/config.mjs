@@ -20,6 +20,7 @@ export const AI_USER_ID = process.env.AI_USER_ID || 'doctor-1';
 export const AI_USER_NAME = process.env.AI_USER_NAME || COUNSELOR_PROFILE.name || 'AI 상담사';
 export const AI_PLATFORM_ROLE = process.env.AI_PLATFORM_ROLE || 'doctor';
 export const TEST_LOGIN_KEY = process.env.WEBRTC_TEST_LOGIN_KEY || process.env.TEST_LOGIN_KEY || '';
+export const TEST_LOGIN_KEY_FILE = process.env.TEST_LOGIN_KEY_FILE || '';
 export const TARGET_CONSULTATION_ID = process.env.CONSULTATION_ID || '';
 export const POLL_MS = Number(process.env.CONSULTATION_POLL_MS || 3000);
 export const PARTICIPANT_ENABLED = String(process.env.PARTICIPANT_ENABLED || 'true').toLowerCase() === 'true';
