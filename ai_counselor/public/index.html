@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI Counselor SDK Playground</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="kicker">AI COUNSELOR SDK</span>
+      <h1>인공지능 상담사 Playground</h1>
+      <p>이 화면은 배포된 <code>/sdk/ai-counselor.esm.js</code>를 직접 import합니다. 분야·역할·목표를 바꾸어 같은 SDK가 다른 상담사로 동작하는지 검증합니다.</p>
+    </div>
+    <div class="badge"><span id="version">-</span></div>
+  </header>
+
+  <section class="grid">
+    <div class="card config">
+      <h2>상담사 설정</h2>
+      <label>Preset
+        <select id="preset">
+          <option value="beauty">beauty · AI언니</option>
+          <option value="generic">generic · 범용</option>
+          <option value="custom">custom</option>
+        </select>
+      </label>
+      <label>Domain<input id="domain" value="beauty-dermatology"></label>
+      <label>상담사 이름<input id="name" value="AI언니"></label>
+      <label>Role<input id="role" value="피부·미용 상담사"></label>
+      <label>Objective<textarea id="objective">피부·미용 고민을 구조화하고 적절한 다음 단계를 설명한다.</textarea></label>
+      <label>Tools<input id="tools" value="procedures, clinics, offers, reviews, booking"></label>
+      <label>추가 지침<textarea id="instructions" placeholder="한 줄에 하나씩"></textarea></label>
+      <button id="apply">설정 적용 / 새 세션</button>
+      <div class="mini"><strong>SDK URL</strong><code id="sdkUrl"></code></div>
+    </div>
+
+    <div class="card chat">
+      <h2>실제 SDK 호출</h2>
+      <div id="messages" class="messages"></div>
+      <div class="composer">
+        <textarea id="message" placeholder="상담 내용을 입력하세요.">턱에 여드름이 계속 나는데 어떤 걸 먼저 확인해야 해?</textarea>
+        <button id="send">보내기</button>
+      </div>
+      <pre id="trace">trace: -</pre>
+      <p id="error" class="error"></p>
+    </div>
+  </section>
+</main>
+<script type="module">
+  const sdkUrl = new URL('/sdk/ai-counselor.esm.js', location.origin).href;
+  document.querySelector('#sdkUrl').textContent = sdkUrl;
+  const sdk = await import(sdkUrl);
+  document.querySelector('#version').textContent = 'SDK ' + sdk.AI_COUNSELOR_SDK_VERSION;
+
+  const $ = (q) => document.querySelector(q);
+  let counselor;
+
+  function profile() {
+    const preset = $('#preset').value;
+    const base = preset !== 'custom' ? (sdk.counselorPresets[preset] || {}) : {};
+    return {
+      ...base,
+      preset,
+      domain: $('#domain').value.trim(),
+      name: $('#name').value.trim(),
+      role: $('#role').value.trim(),
+      objective: $('#objective').value.trim(),
+      tools: $('#tools').value.split(',').map(v => v.trim()).filter(Boolean),
+      instructions: $('#instructions').value.split('\n').map(v => v.trim()).filter(Boolean),
+    };
+  }
+
+  function applyPreset() {
+    const p = sdk.counselorPresets[$('#preset').value];
+    if (!p) return;
+    $('#domain').value = p.domain || '';
+    $('#name').value = p.name || '';
+    $('#role').value = p.role || '';
+    $('#objective').value = p.objective || '';
+    $('#tools').value = (p.tools || []).join(', ');
+  }
+
+  function create() {
+    counselor = sdk.AICounselor.create({ endpoint: location.origin, profile: profile() });
+    $('#messages').innerHTML = '';
+    $('#trace').textContent = 'trace: session initialized';
+    $('#error').textContent = '';
+  }
+
+  function add(kind, text) {
+    const el = document.createElement('div');
+    el.className = 'message ' + kind;
+    el.textContent = text;
+    $('#messages').appendChild(el);
+    $('#messages').scrollTop = $('#messages').scrollHeight;
+  }
+
+  $('#preset').addEventListener('change', () => { applyPreset(); create(); });
+  $('#apply').addEventListener('click', create);
+  $('#send').addEventListener('click', async () => {
+    const text = $('#message').value.trim();
+    if (!text) return;
+    $('#error').textContent = '';
+    add('user', text);
+    $('#send').disabled = true;
+    try {
+      const result = await counselor.respond(text, { surface: 'playground' });
+      add('assistant', result.text);
+      $('#trace').textContent = JSON.stringify(result.trace, null, 2);
+    } catch (error) {
+      $('#error').textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      $('#send').disabled = false;
+    }
+  });
+
+  applyPreset();
+  create();
+</script>
+</body>
+</html>
