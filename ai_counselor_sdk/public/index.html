@@ -1,59 +1,47 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Counselor SDK · Playground</title><link rel="stylesheet" href="/styles.css"></head>
+<meta name="theme-color" content="#101923"><title>AI 영상상담사 · Playground</title><link rel="stylesheet" href="/styles.css">
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/","mindar-face-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js"}}</script></head>
 <body><main>
-<header><p class="eyebrow">GRB LAB · REUSABLE AI COUNSELOR</p><h1>인공지능 상담사 SDK</h1><p>같은 SDK에 상담 분야·역할·목표·도구를 주입해 각 프로젝트에서 재사용합니다. 이 Playground는 서버에 배포된 SDK ESM을 실제 import합니다.</p><p id="status">상태 조회 중</p></header>
-<section class="columns"><div class="panel"><h2>상담사 설정</h2>
-<label>Preset<select id="preset"><option value="generic">범용 AI 상담사</option><option value="beauty">AI언니 · 피부·미용</option><option value="elderly-care">장기요양</option><option value="tutoring">개인과외</option><option value="interview">모의면접</option><option value="custom">직접 설정</option></select></label>
-<label>Domain<input id="domain" autocomplete="off"></label>
-<label>상담사 이름<input id="name"></label><label>Role<input id="role"></label>
-<label>Objective<textarea id="objective"></textarea></label><label>Tools (쉼표 구분)<input id="tools"></label>
-<label>Instructions (줄바꿈 구분)<textarea id="instructions"></textarea></label>
-<label>Runtime API token<input id="token" type="password" placeholder="인증 토큰은 서버에 저장하지 않습니다"></label>
-<button id="apply">프로필 적용 / 세션 초기화</button>
-<p class="tip">SDK: <code>/sdk/ai-counselor.esm.js</code></p><p id="version"></p>
-</div><div class="panel"><h2>SDK 실제 응답 검증</h2><div id="messages" class="messages" aria-live="polite"></div>
-<label>대화 입력<textarea id="message" placeholder="상담사에게 질문하십시오."></textarea></label><button id="send">AI 상담사에게 전송</button>
-<pre id="trace"></pre><p id="error" role="alert"></p></div></section></main>
+<header><div><p class="eyebrow">GRB LAB · VIDEO COUNSELOR SDK</p><h1>인공지능 영상상담실</h1><p class="lead">영상·음성·얼굴 가면은 기존 VideoCore SDK를 직접 불러와 사용합니다.</p></div><span id="status">런타임 연결 중</span></header>
+<section class="columns">
+<div class="video-panel">
+ <div class="stage">
+  <div class="stage-top"><span class="room-badge" id="call-status">상담실 입장 전</span><span id="room-status">상담사 입점 상태 확인 중</span></div>
+  <div class="ai-tile"><div class="avatar" id="avatar">AI</div><h2 id="assistant-name">AI 상담사</h2><p id="assistant-role">범용 상담사</p><p class="ai-state" id="assistant-state">상담사 연결 대기</p></div>
+  <div class="local-tile"><video id="local-video" autoplay playsinline muted></video><div class="placeholder" id="camera-placeholder">내 카메라</div><div class="self-label">나 · <span id="mode-label">원본 영상</span></div></div>
+ </div>
+ <nav class="call-controls" aria-label="영상상담 조작"><button id="join" class="primary">카메라·마이크 연결</button><button id="mic" disabled>🎙 마이크</button><button id="camera" disabled>▣ 카메라</button><button id="mask" disabled>얼굴 가면 켜기</button><button id="leave" class="end" disabled>연결 종료</button></nav>
+ <div class="video-meta"><span id="core-state">VideoCore SDK 가져오는 중</span><span id="tracking-state">추적 FPS –</span></div>
+ <p id="error" class="error" role="alert"></p>
+ <div class="notice" id="connection-notice">실제 음성·영상 통화는 WebRTC 진료실에 입점한 상담사와 연결돼야 시작됩니다. 카메라 미리보기는 그 전에도 동작합니다.</div>
+</div>
+<aside class="panel"><h2>상담사 설정</h2>
+<label>상담 분야<select id="preset"><option value="generic">범용 AI 상담사</option><option value="beauty">AI언니 · 피부·미용</option><option value="elderly-care">장기요양</option><option value="tutoring">개인과외</option><option value="interview">모의면접</option><option value="custom">직접 설정</option></select></label>
+<label>상담사 이름<input id="name"></label><label>Domain<input id="domain"></label><label>Role<input id="role"></label><label>Objective<textarea id="objective"></textarea></label>
+<label>Tools (쉼표 구분)<input id="tools"></label><label>Instructions (줄바꿈 구분)<textarea id="instructions"></textarea></label>
+<button id="apply" class="apply">프로필 적용</button>
+<div class="sdk-info">상담사 SDK <code id="version"></code><div>영상 코어 <code>video-core.esm.js</code></div><div id="video-core-url"></div></div>
+<details><summary>개발자용 텍스트 API 검증</summary><p>영상 코어와 별개인, 인증이 필요한 서버 API 테스트입니다.</p><label>Runtime API token<input id="token" type="password" autocomplete="off"></label><textarea id="message" placeholder="검증할 문장"></textarea><button id="send">텍스트 응답 테스트</button><pre id="trace"></pre><div id="messages"></div></details>
+</aside></section></main>
 <script type="module">
-const sdk=await import('/sdk/ai-counselor.esm.js');
-const el=id=>document.getElementById(id);
-el('version').textContent='실제 SDK '+sdk.AI_COUNSELOR_SDK_VERSION;
-let counselor;
-const keys=['domain','name','role','objective'];
-function applyPreset(){
- const p=sdk.counselorPresets[el('preset').value]||{};
- for(const key of keys)el(key).value=p[key]||'';
- el('tools').value=(p.tools||[]).join(', ');
- el('instructions').value=(p.instructions||[]).join('\n');
-}
-function profile(){
- const preset=el('preset').value;
- const p={preset,...Object.fromEntries(keys.map(k=>[k,el(k).value.trim()])),
- tools:el('tools').value.split(',').map(x=>x.trim()).filter(Boolean),
- instructions:el('instructions').value.split('\n').map(x=>x.trim()).filter(Boolean)};
- return p;
-}
-function reset(){
- counselor=sdk.AICounselor.create({endpoint:location.origin,profile:profile(),accessToken:el('token').value.trim()});
- el('messages').replaceChildren();el('trace').textContent='New session: '+counselor.sessionId;el('error').textContent='';
-}
-function message(role,content){
- const div=document.createElement('article');div.className='message '+role;div.textContent=content;
- el('messages').appendChild(div);el('messages').scrollTop=el('messages').scrollHeight;
-}
-el('preset').addEventListener('change',()=>{applyPreset();reset();});
-el('apply').addEventListener('click',reset);
-el('send').addEventListener('click',async()=>{
- const text=el('message').value.trim();if(!text)return;
- if(!counselor.accessToken){el('error').textContent='Runtime API token이 필요합니다.';return;}
- message('user',text);el('error').textContent='';el('send').disabled=true;
- try {const result=await counselor.respond(text,{surface:'playground'});message('assistant',result.text);el('trace').textContent=JSON.stringify(result.trace,null,2);}
- catch(error){el('error').textContent=String(error.message||error);}
- finally {el('send').disabled=false;}
-});
-fetch('/health').then(r=>r.json()).then(v=>{
- el('status').textContent='Runtime '+(v.ok?'online':'offline')+' · OpenAI '+(v.openaiConfigured?'configured':'missing')+' · Participant '+(v.participantEnabled?'on':'off');
-}).catch(()=>{el('status').textContent='Runtime status unavailable';});
-applyPreset();reset();
+const sdk=await import('/sdk/ai-counselor.esm.js');const el=id=>document.getElementById(id);
+el('version').textContent=sdk.AI_COUNSELOR_SDK_VERSION;el('video-core-url').textContent=sdk.DEFAULT_VIDEO_CORE_SDK_URL;
+let counselor,micOn=true,camOn=true,timer=null;const fields=['domain','name','role','objective'];
+const error=e=>{el('error').textContent=e?(e.message||String(e)):'';};
+function profile(){return {preset:el('preset').value,...Object.fromEntries(fields.map(x=>[x,el(x).value.trim()])),tools:el('tools').value.split(',').map(x=>x.trim()).filter(Boolean),instructions:el('instructions').value.split('\n').map(x=>x.trim()).filter(Boolean)};}
+function preset(){const p=sdk.counselorPresets[el('preset').value]||{};fields.forEach(x=>el(x).value=p[x]||'');el('tools').value=(p.tools||[]).join(', ');el('instructions').value=(p.instructions||[]).join('\n');}
+function controls(on){['mic','camera','mask','leave'].forEach(x=>el(x).disabled=!on);el('join').disabled=on;el('camera-placeholder').hidden=on;el('call-status').textContent=on?'카메라 준비 완료':'상담실 입장 전';}
+function stop(){if(timer)clearInterval(timer);timer=null;counselor?.stopCamera();el('local-video').srcObject=null;micOn=true;camOn=true;el('mic').textContent='🎙 마이크';el('camera').textContent='▣ 카메라';el('mask').textContent='얼굴 가면 켜기';el('mode-label').textContent='원본 영상';el('tracking-state').textContent='추적 FPS –';controls(false);}
+function apply(){if(counselor?.cameraSession)stop();counselor=sdk.AICounselor.create({endpoint:location.origin,profile:profile()});el('assistant-name').textContent=counselor.profile.name;el('assistant-role').textContent=counselor.profile.role;el('avatar').textContent=(counselor.profile.name||'AI').slice(0,2);el('trace').textContent='Session: '+counselor.sessionId;error(null);}
+el('join').addEventListener('click',async()=>{error(null);el('join').disabled=true;el('join').textContent='연결 중…';try{const cam=await counselor.openCamera({mode:'original'});el('local-video').srcObject=cam.stream;await el('local-video').play().catch(()=>undefined);controls(true);timer=setInterval(()=>{const s=counselor.getTrackingStatus();el('tracking-state').textContent=s?'추적 FPS '+Number(s.fps||0).toFixed(1):'추적 FPS –';},400);}catch(e){stop();error(e);}finally{el('join').textContent='카메라·마이크 연결';}});
+el('leave').addEventListener('click',()=>{stop();error(null);});
+el('mic').addEventListener('click',()=>{micOn=!micOn;(counselor.getCameraStream()?.getAudioTracks()||[]).forEach(t=>t.enabled=micOn);el('mic').textContent=micOn?'🎙 마이크':'🔇 음소거';});
+el('camera').addEventListener('click',()=>{camOn=!camOn;(counselor.getCameraStream()?.getVideoTracks()||[]).forEach(t=>t.enabled=camOn);el('camera').textContent=camOn?'▣ 카메라':'▢ 카메라 끔';});
+el('mask').addEventListener('click',async()=>{error(null);el('mask').disabled=true;try{const m=counselor.cameraSession?.mode==='mask'?'original':'mask';const stream=await counselor.setCameraMode(m);el('local-video').srcObject=stream;el('mode-label').textContent=m==='mask'?'얼굴 가면':'원본 영상';el('mask').textContent=m==='mask'?'원본으로 전환':'얼굴 가면 켜기';}catch(e){error(e);}finally{el('mask').disabled=false;}});
+el('preset').addEventListener('change',()=>{preset();apply();});el('apply').addEventListener('click',apply);
+el('send').addEventListener('click',async()=>{error(null);const text=el('message').value.trim(),token=el('token').value.trim();if(!text)return;if(!token){error('텍스트 API 개발자 테스트에는 인증 토큰이 필요합니다.');return;}el('send').disabled=true;counselor.accessToken=token;try{const r=await counselor.respond(text,{surface:'playground'});el('messages').textContent=r.text;el('trace').textContent=JSON.stringify(r.trace,null,2);}catch(e){error(e);}finally{el('send').disabled=false;}});
+fetch('/health').then(r=>r.json()).then(h=>{el('status').textContent='AI 런타임 '+(h.ok?'정상':'오류');el('room-status').textContent=h.participantEnabled?'AI Participant 활성':'AI Participant 비활성';el('assistant-state').textContent=h.participantEnabled?'서버 참가자 기능 활성 · 실제 입장 여부는 별도 확인':'진료실 AI 상담사 미입점 (Participant off)';el('connection-notice').textContent=h.participantEnabled?'카메라 연결은 VideoCore가 담당합니다. 양방향 통화는 기존 WebRTC 진료실의 세션과 roomAdapter가 연결돼야 합니다.':'현재 서버의 WebRTC 상담사 참가 기능이 꺼져 있어 양방향 통화는 시작되지 않습니다. 영상 코어 카메라·가면 기능은 직접 테스트할 수 있습니다.';}).catch(e=>{el('status').textContent='서버 연결 실패';error(e);});
+const checker=sdk.AICounselor.create({endpoint:location.origin});checker.loadVideoCore().then(()=>el('core-state').textContent='영상 코어 연결됨 · '+checker.videoCoreVersion).catch(e=>{el('core-state').textContent='영상 코어 불러오기 실패';error(e);});
+window.addEventListener('beforeunload',stop);preset();apply();controls(false);
 </script></body></html>
