@@ -34,7 +34,7 @@ export class CounselorSession {
   constructor(profile, options = {}) {
     this.profile = normalizeCounselorProfile(profile);
     this.apiKey = readConfiguredApiKey(options.apiKey);
-    this.chatModel = options.chatModel || process.env.OPENAI_CHAT_MODEL || 'gpt-6-luna';
+    this.chatModel = options.chatModel || process.env.OPENAI_CHAT_MODEL || 'gpt-5.6-sol';
     this.transcribeModel = options.transcribeModel || process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-transcribe';
     this.ttsModel = options.ttsModel || process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
     this.previousResponseId = null;

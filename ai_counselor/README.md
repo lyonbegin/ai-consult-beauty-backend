@@ -29,7 +29,7 @@ console.log(result.text);
 
 ## Runtime 환경변수
 - `OPENAI_API_KEY`
-- `OPENAI_CHAT_MODEL` (기본 `gpt-6-luna`)
+- `OPENAI_CHAT_MODEL` (기본 `gpt-5.6-sol`)
 - `OPENAI_TRANSCRIBE_MODEL` (기본 `gpt-transcribe`)
 - `OPENAI_TTS_MODEL` (기본 `gpt-4o-mini-tts`)
 - `COUNSELOR_PRESET` (기본 `beauty`)
@@ -46,3 +46,13 @@ console.log(result.text);
 - `GET /v1/presets`
 - `POST /v1/respond`
 - `POST /v1/session/reset`
+
+
+## 기본 프리셋
+- `generic`: 범용 상담사
+- `beauty`: AI언니 피부·미용 상담사
+- `elderly-care`: 장기요양·통합돌봄 상담사
+- `tutoring`: 개인 과외 상담사
+- `interview`: 취업·모의면접 상담사
+
+프리셋은 예시일 뿐이며 모든 프로젝트는 `domain`, `role`, `objective`, `instructions`, `tools`, `policy`를 외부에서 덮어써서 동일 SDK를 재사용할 수 있습니다.
