@@ -71,3 +71,11 @@ export function emitAck(socket, event, payload, timeoutMs = 15000) {
     });
   });
 }
+
+export async function createConsultation(token, input) {
+  return apiRequest('/telemedicine/consultations', {
+    method: 'POST',
+    token,
+    body: input,
+  });
+}
