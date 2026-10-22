@@ -1,15 +1,15 @@
 {
   "name": "ai-unni-webrtc-participant",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/client.mjs",
-    "check": "node --check src/client.mjs"
+    "start": "node src/main.mjs",
+    "check": "node --check src/config.mjs && node --check src/signaling.mjs && node --check src/audio.mjs && node --check src/brain.mjs && node --check src/rtc.mjs && node --check src/main.mjs"
   },
   "dependencies": {
     "@roamhq/wrtc": "0.10.0",
-    "mediasoup-client": "^3.24.4",
+    "mediasoup-client": "3.20.0",
     "mediasoup-client-wrtc": "github:piranna/Mediasoup-client-wrtc#701d5dcea2b52692b5f4239145360b2621792bf6",
     "socket.io-client": "^4.8.1"
   }
