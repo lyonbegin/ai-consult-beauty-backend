@@ -5,7 +5,6 @@ primary_region = "nrt"
   dockerfile = "ai_participant/Dockerfile"
 
 [env]
-  PORT = "8080"
   WEBRTC_BASE_URL = "https://webrtc-new.fly.dev"
   AI_USER_ID = "doctor-2"
   AI_USER_NAME = "AI언니"
@@ -14,14 +13,11 @@ primary_region = "nrt"
   OPENAI_CHAT_MODEL = "gpt-6-luna"
   OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
   OPENAI_TTS_VOICE = "coral"
+  MAX_ACTIVE_ROOMS = "1"
+  CONSULTATION_POLL_MS = "3000"
 
-[http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ["app"]
+[processes]
+  app = "npm start"
 
 [[vm]]
   memory = "1gb"
