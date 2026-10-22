@@ -1,0 +1,20 @@
+name: Probe Railway deployment secret
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-railway-token.yml"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secret presence only
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "${RAILWAY_TOKEN:-}" ]; then echo "RAILWAY_TOKEN_PRESENT=true"; else echo "RAILWAY_TOKEN_PRESENT=false"; fi
+          if [ -n "${OPENAI_API_KEY:-}" ]; then echo "OPENAI_API_KEY_PRESENT=true"; else echo "OPENAI_API_KEY_PRESENT=false"; fi
