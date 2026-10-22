@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {CounselorSession} from '../core/session.mjs';
 import {COUNSELOR_PRESETS,normalizeCounselorProfile,counselorProfileFingerprint} from '../core/profile.mjs';
 import {PARTICIPANT_ENABLED,COUNSELOR_PROFILE} from './config.mjs';
+import {getSdkBootstrapPublicKey} from './restore-credentials.mjs';
 const root=join(dirname(fileURLToPath(import.meta.url)),'../..');
 const sessions=new Map();
 const age=30*60*1000;
@@ -50,6 +51,7 @@ export function startRuntimeServer(port=8080){
         webrtcKeyConfigured:configured('TEST_LOGIN_KEY','TEST_LOGIN_KEY_FILE','/data/test_login_key')||Boolean(process.env.WEBRTC_TEST_LOGIN_KEY),
         apiAuthConfigured:Boolean(process.env.RUNTIME_API_TOKEN)
       });
+      if(req.method==='GET'&&path==='/internal/bootstrap/public-key')return send(res,200,{algorithm:'RSA-OAEP-SHA256',publicKey:getSdkBootstrapPublicKey()});
       if(req.method==='GET'&&path==='/v1/presets')return send(res,200,COUNSELOR_PRESETS);
       if(req.method==='GET'&&(path==='/'||path==='/playground'))return staticFile(res,'public/index.html','text/html; charset=utf-8');
       if(req.method==='GET'&&path==='/styles.css')return staticFile(res,'public/styles.css','text/css; charset=utf-8');
