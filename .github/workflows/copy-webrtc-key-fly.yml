@@ -1,0 +1,44 @@
+name: Copy webrtc-new login key to AI participant
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/copy-webrtc-key-fly.yml"
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Copy TEST_LOGIN_KEY inside Fly without exposing value
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="$(flyctl ssh console -a webrtc-new -C 'printenv TEST_LOGIN_KEY' 2>/dev/null | tail -n 1 | tr -d '\r\n')"
+          if [ -z "$KEY" ]; then
+            echo "Could not read TEST_LOGIN_KEY from webrtc-new machine" >&2
+            exit 1
+          fi
+          echo "::add-mask::$KEY"
+          flyctl secrets set WEBRTC_TEST_LOGIN_KEY="$KEY" -a ai-unni-participant
+          echo "Copied TEST_LOGIN_KEY to ai-unni-participant as WEBRTC_TEST_LOGIN_KEY"
+
+      - name: Restart AI participant
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          flyctl machine restart -a ai-unni-participant --all
+
+      - name: Show AI startup logs
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set +e
+          timeout 15s flyctl logs -a ai-unni-participant
+          exit 0
