@@ -6,8 +6,8 @@ primary_region = "nrt"
 
 [env]
   WEBRTC_BASE_URL = "https://webrtc-new.fly.dev"
-  AI_USER_ID = "doctor-2"
-  AI_USER_NAME = "AI언니"
+  AI_USER_ID = "doctor-1"
+  AI_USER_NAME = "AI언니 의사"
   AI_PLATFORM_ROLE = "doctor"
   OPENAI_TRANSCRIBE_MODEL = "gpt-transcribe"
   OPENAI_CHAT_MODEL = "gpt-6-luna"
@@ -15,6 +15,11 @@ primary_region = "nrt"
   OPENAI_TTS_VOICE = "coral"
   MAX_ACTIVE_ROOMS = "1"
   CONSULTATION_POLL_MS = "3000"
+  AUTO_ROOM_TITLE = "AI언니 상시 상담방"
+  AUTO_PATIENT_ID = "patient-1"
+  AUTO_PATIENT_NAME = "테스트 환자"
+  AUTO_CREATE_ROOM = "true"
+  AUTO_START_ROOM = "true"
 
 [processes]
   app = "npm start"
