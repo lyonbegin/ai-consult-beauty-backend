@@ -1,6 +1,8 @@
 import { Device } from 'mediasoup-client';
 import { WrtcHandler } from 'mediasoup-client-wrtc';
-import * as wrtc from '@roamhq/wrtc';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const wrtc = require('@roamhq/wrtc');
 import { AI_USER_ID } from './config.mjs';
 import { AudioOutput, UtteranceCollector, createAudioSink } from './audio.mjs';
 import { Brain } from './brain.mjs';
