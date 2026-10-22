@@ -1,0 +1,23 @@
+name: Validate AI WebRTC Participant
+
+on:
+  push:
+    paths:
+      - "ai_participant/**"
+      - ".github/workflows/validate-ai-participant.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai_participant
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: sudo apt-get update && sudo apt-get install -y git ca-certificates
+      - run: npm install
+      - run: npm run check
