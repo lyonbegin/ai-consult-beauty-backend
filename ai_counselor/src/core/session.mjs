@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   buildCounselorInstructions,
   normalizeCounselorProfile,
@@ -16,10 +17,23 @@ function extractResponseText(body) {
   return parts.join('\n').trim();
 }
 
+function readConfiguredApiKey(initial = '') {
+  const direct = String(initial || process.env.OPENAI_API_KEY || '').trim();
+  if (direct) return direct;
+
+  const file = String(process.env.OPENAI_API_KEY_FILE || '').trim();
+  if (!file) return '';
+  try {
+    return readFileSync(file, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
 export class CounselorSession {
   constructor(profile, options = {}) {
     this.profile = normalizeCounselorProfile(profile);
-    this.apiKey = options.apiKey || process.env.OPENAI_API_KEY || '';
+    this.apiKey = readConfiguredApiKey(options.apiKey);
     this.chatModel = options.chatModel || process.env.OPENAI_CHAT_MODEL || 'gpt-6-luna';
     this.transcribeModel = options.transcribeModel || process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-transcribe';
     this.ttsModel = options.ttsModel || process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
@@ -36,6 +50,7 @@ export class CounselorSession {
   }
 
   requireApiKey() {
+    if (!this.apiKey) this.apiKey = readConfiguredApiKey();
     if (!this.apiKey) throw new Error('OPENAI_API_KEY is not configured');
   }
 

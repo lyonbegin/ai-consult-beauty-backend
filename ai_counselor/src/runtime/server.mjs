@@ -1,6 +1,8 @@
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
+import { constants, privateDecrypt } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CounselorSession } from '../core/session.mjs';
 import {
@@ -36,6 +38,14 @@ async function readJson(req) {
   return text ? JSON.parse(text) : {};
 }
 
+function secretFile() {
+  return String(process.env.OPENAI_API_KEY_FILE || '/data/openai_api_key');
+}
+
+function openAIConfigured() {
+  return Boolean(String(process.env.OPENAI_API_KEY || '').trim()) || existsSync(secretFile());
+}
+
 function getSession(sessionId, profile) {
   const normalized = normalizeCounselorProfile(profile);
   const fingerprint = counselorProfileFingerprint(normalized);
@@ -55,6 +65,40 @@ async function fileResponse(res, path, contentType) {
   }
 }
 
+async function bootstrapOpenAIKey(body) {
+  if (openAIConfigured()) return { alreadyConfigured: true };
+
+  const privateKeyB64 = String(process.env.BOOTSTRAP_PRIVATE_KEY_B64 || '').trim();
+  if (!privateKeyB64) throw new Error('bootstrap is disabled');
+  const ciphertextB64 = String(body?.ciphertext || '').trim();
+  if (!ciphertextB64) throw new Error('ciphertext is required');
+
+  let apiKey = privateDecrypt(
+    {
+      key: Buffer.from(privateKeyB64, 'base64').toString('utf8'),
+      padding: constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha1',
+    },
+    Buffer.from(ciphertextB64, 'base64'),
+  ).toString('utf8').trim();
+
+  if (!apiKey.startsWith('sk-')) throw new Error('decrypted credential has invalid format');
+
+  const validation = await fetch('https://api.openai.com/v1/models', {
+    headers: { authorization: `Bearer ${apiKey}` },
+  });
+  if (!validation.ok) {
+    apiKey = '';
+    throw new Error(`OpenAI credential validation failed: HTTP ${validation.status}`);
+  }
+
+  const target = secretFile();
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, apiKey, { encoding: 'utf8', mode: 0o600 });
+  apiKey = '';
+  return { stored: true };
+}
+
 export function startRuntimeServer(port) {
   const server = http.createServer(async (req, res) => {
     try {
@@ -66,7 +110,7 @@ export function startRuntimeServer(port) {
           ok: true,
           service: 'ai-counselor-runtime',
           sdkVersion: '0.1.0',
-          openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
+          openaiConfigured: openAIConfigured(),
         });
       }
 
@@ -84,6 +128,11 @@ export function startRuntimeServer(port) {
 
       if (req.method === 'GET' && url.pathname === '/sdk/ai-counselor.esm.js') {
         return fileResponse(res, join(root, 'dist/sdk/ai-counselor.esm.js'), 'text/javascript; charset=utf-8');
+      }
+
+      if (req.method === 'POST' && url.pathname === '/internal/bootstrap/openai') {
+        const result = await bootstrapOpenAIKey(await readJson(req));
+        return send(res, 200, { ok: true, ...result });
       }
 
       if (req.method === 'POST' && url.pathname === '/v1/respond') {
@@ -114,7 +163,7 @@ export function startRuntimeServer(port) {
 
       return send(res, 404, { error: 'not found' });
     } catch (error) {
-      console.error('[runtime-http]', error);
+      console.error('[runtime-http]', error instanceof Error ? error.message : String(error));
       return send(res, 500, { error: error instanceof Error ? error.message : String(error) });
     }
   });

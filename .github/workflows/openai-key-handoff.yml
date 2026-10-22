@@ -5,14 +5,16 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/openai-key-handoff.yml"
+  workflow_dispatch:
 
 jobs:
-  encrypt:
+  handoff:
     runs-on: ubuntu-latest
     steps:
-      - name: Encrypt OpenAI key for Railway handoff
+      - name: Encrypt GitHub OpenAI secret and hand it directly to Railway
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          RUNTIME_URL: https://ai-counselor-runtime-production.up.railway.app
         run: |
           set -euo pipefail
           test -n "${OPENAI_API_KEY:-}"
@@ -27,6 +29,9 @@ jobs:
           wwIDAQAB
           -----END PUBLIC KEY-----
           KEY
-          printf '%s' "$OPENAI_API_KEY" | openssl pkeyutl -encrypt -pubin -inkey /tmp/handoff-public.pem -pkeyopt rsa_padding_mode:oaep | base64 -w 0 | sed 's/^/OPENAI_CIPHERTEXT_B64=/'
+          CIPHERTEXT="$(printf '%s' "$OPENAI_API_KEY" | openssl pkeyutl -encrypt -pubin -inkey /tmp/handoff-public.pem -pkeyopt rsa_padding_mode:oaep | base64 -w 0)"
+          BODY="$(printf '%s' "$CIPHERTEXT" | python3 -c 'import json,sys; print(json.dumps({"ciphertext":sys.stdin.read()}))')"
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors             -H 'content-type: application/json'             --data-binary "$BODY"             "$RUNTIME_URL/internal/bootstrap/openai"
           echo
-          echo "ENCRYPTED_HANDOFF_OK"
+          curl --fail --silent --show-error "$RUNTIME_URL/health" | grep -q '"openaiConfigured":true'
+          echo "OPENAI_HANDOFF_OK"
