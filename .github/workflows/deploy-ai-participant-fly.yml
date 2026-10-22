@@ -8,7 +8,7 @@ on:
         required: false
         default: ai-unni-participant
       org_slug:
-        description: Fly organization slug (leave empty to use first accessible org)
+        description: Fly organization slug (optional)
         required: false
         default: ""
 
@@ -19,10 +19,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Resolve Fly organization and app
+      - name: Resolve Fly app
         id: fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -32,18 +31,14 @@ jobs:
           set -euo pipefail
           APP="${INPUT_APP:-ai-unni-participant}"
           ORG="$INPUT_ORG"
-          if [ -z "$ORG" ]; then
-            ORG="$(flyctl orgs list --json | python3 -c 'import json,sys; x=json.load(sys.stdin); print((x[0].get("Slug") or x[0].get("slug")) if x else "")')"
-          fi
-          if [ -z "$ORG" ]; then
-            echo "No Fly organization could be resolved" >&2
-            exit 1
-          fi
-          echo "app=$APP" >> "$GITHUB_OUTPUT"
-          echo "org=$ORG" >> "$GITHUB_OUTPUT"
           if ! flyctl status -a "$APP" >/dev/null 2>&1; then
+            if [ -z "$ORG" ]; then
+              ORG="$(flyctl orgs list --json | python3 -c 'import json,sys; x=json.load(sys.stdin); print((x[0].get("Slug") or x[0].get("slug")) if x else "")')"
+            fi
+            test -n "$ORG"
             flyctl apps create "$APP" --org "$ORG"
           fi
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
 
       - name: Set runtime secrets
         env:
@@ -53,22 +48,19 @@ jobs:
           WEBRTC_TEST_LOGIN_KEY: ${{ secrets.WEBRTC_TEST_LOGIN_KEY }}
         run: |
           set -euo pipefail
-          if [ -n "${OPENAI_API_KEY:-}" ]; then
-            flyctl secrets set OPENAI_API_KEY="$OPENAI_API_KEY" -a "$APP"
-          fi
+          test -n "${OPENAI_API_KEY:-}"
+          flyctl secrets set OPENAI_API_KEY="$OPENAI_API_KEY" -a "$APP"
           if [ -n "${WEBRTC_TEST_LOGIN_KEY:-}" ]; then
             flyctl secrets set WEBRTC_TEST_LOGIN_KEY="$WEBRTC_TEST_LOGIN_KEY" -a "$APP"
           fi
 
-      - name: Deploy
+      - name: Deploy client worker
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           APP: ${{ steps.fly.outputs.app }}
-        run: |
-          set -euo pipefail
-          flyctl deploy --remote-only --app "$APP" --config ai_participant/fly.toml
+        run: flyctl deploy --remote-only --app "$APP" --config ai_participant/fly.toml
 
-      - name: Show status
+      - name: Show process status
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           APP: ${{ steps.fly.outputs.app }}
