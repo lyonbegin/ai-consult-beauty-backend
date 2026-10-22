@@ -12,15 +12,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Start primary AI machine
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="$(flyctl machines list -a ai-unni-participant --json | python3 -c 'import json,sys; x=json.load(sys.stdin); print(x[0]["id"] if x else "")')"
+          test -n "$ID"
+          flyctl machine start "$ID" -a ai-unni-participant || true
+          sleep 5
+
       - name: Status
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl status -a ai-unni-participant
+
       - name: Recent logs
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          sleep 5
           set +e
           timeout 12s flyctl logs -a ai-unni-participant
           exit 0
