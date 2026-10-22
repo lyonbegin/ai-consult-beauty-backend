@@ -160,3 +160,16 @@ export async function stopParticipant() {
   for (const client of rooms.values()) await client.close().catch(() => undefined);
   rooms.clear();
 }
+
+// Read-only public-room readiness information for the video consultation Playground.
+// Never expose room tokens, patient identities, secrets or signaling auth.
+export function getParticipantStatus(){
+  return [...rooms.values()].map(client=>({
+    roomId:client.sessionId,
+    title:client.session?.title||'',
+    status:client.session?.status||'UNKNOWN',
+    joined:Boolean(client.joined&&!client.closed),
+    live:Boolean(client.live),
+    rtcConnected:Boolean(client.rtc?.started&&!client.rtc?.disposed),
+  }));
+}
