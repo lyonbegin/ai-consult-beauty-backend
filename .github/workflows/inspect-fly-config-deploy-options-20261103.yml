@@ -1,0 +1,31 @@
+name: Inspect safe existing Fly config and deploy options
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: [.github/workflows/inspect-fly-config-deploy-options-20261103.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Display config type and deployment flags without revealing secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo '=== config commands ==='
+          flyctl config --help | head -75
+          echo '=== config show (safe port lines only) ==='
+          flyctl config show -a webrtc-new >/tmp/active-config-out 2>&1 || true
+          python3 - <<'PY'
+          import pathlib
+          s=pathlib.Path('/tmp/active-config-out').read_text()
+          print('output lines:',len(s.splitlines()))
+          for line in s.splitlines():
+            if any(t in line.lower() for t in ('http_service','40000','40001','listen','service','worker','port','primary_region','build','vm','process')):
+              print(line[:170])
+          PY
+          echo '=== fly deploy image flags ==='
+          flyctl deploy --help | grep -E -A1 '(--image|--config|--strategy|--remote-only|--vm-size|--build-only|--wait-timeout)' | head -60
