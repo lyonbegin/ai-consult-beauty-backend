@@ -1,0 +1,24 @@
+name: Inspect webrtc-new installed package metadata (read only)
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/inspect-webrtc-new-package-readonly.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Read installed package and compiled module filenames
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set +x
+          echo '=== package.json (metadata and dependency declarations only) ==='
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'cat /app/package.json' || true
+          echo '=== /app/dist modules ==='
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'find /app/dist -maxdepth 3 -type f' || true
+          echo '=== end ==='
