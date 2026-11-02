@@ -1,0 +1,25 @@
+name: Inspect Fly webrtc-new effective published port numbers only
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/inspect-webrtc-new-fly-services-20261103.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Check active config restricted to port declarations
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set +x
+          echo 'Published media service configuration, filtered to ports only:'
+          flyctl config show -a webrtc-new 2>/dev/null | awk '
+            /\[\[services\]\]/ { section=1; print "--- media service ---"; next }
+            /\[\[vm\]\]/ { section=0 }
+            section && /protocol|internal_port|port =/ { print }
+            /\[http_service\]/ { print "--- http service ---"; section=2; next }
+            section==2 && /internal_port/ { print; section=0 }'
