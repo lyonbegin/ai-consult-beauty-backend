@@ -1,0 +1,37 @@
+name: Inspect Fly webrtc-new v15 provenance read-only
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/inspect-webrtc-new-v15-provenance.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Read v15 release metadata and GitHub build labels (no secrets)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          flyctl releases -a webrtc-new --json > /tmp/v15_releases.json
+          flyctl image show -a webrtc-new --json > /tmp/v15_image.json 2>/dev/null || printf '{}' > /tmp/v15_image.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('/tmp/v15_releases.json'))
+          print('RELEASES_TYPE:',type(r).__name__)
+          allitems=r if isinstance(r,list) else (r.get('releases') or r.get('Releases') or r.get('nodes') or [])
+          print('RELEASES_COUNT:',len(allitems))
+          for release in allitems:
+            if str(release.get('Version',release.get('version',''))) in ('15','14','13'):
+              print('RELEASE',json.dumps({k:v for k,v in release.items() if k.lower() not in ('email','token','secret','secrets','password','auth','authorization')},ensure_ascii=False,default=str)[:6000])
+          img=json.load(open('/tmp/v15_image.json'))
+          print('IMAGE_JSON_KEYS:',list(img) if isinstance(img,dict) else type(img).__name__)
+          if isinstance(img,dict):
+            print('IMAGE_INFO',json.dumps({k:v for k,v in img.items() if any(z in k.lower() for z in ('image','ref','digest','label','source','commit','created','builder','version','tag'))},ensure_ascii=False,default=str)[:5000])
+          PY
+          echo '=== Fly release help ==='
+          flyctl releases --help | head -65
