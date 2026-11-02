@@ -1,0 +1,20 @@
+name: Compare Fly auth controller with archived source (read only)
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/compare-webrtc-new-auth-readonly.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Print only auth controller function from installed code
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set +x
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'node -e "const fs=require(\"fs\");const t=fs.readFileSync(\"/app/dist/auth/auth.controller.js\",\"utf8\");const i=t.indexOf(\"async devToken(\");console.log(i>=0?t.slice(i,i+1400).replace(/\\b[A-Za-z0-9_-]{35,}\\b/g,\"[REDACTED]\"): \"No devToken function found\")"' || true
