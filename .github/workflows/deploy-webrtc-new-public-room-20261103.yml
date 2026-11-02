@@ -1,0 +1,83 @@
+name: Deploy tested public room API to original Fly webrtc-new
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: [.github/workflows/deploy-webrtc-new-public-room-20261103.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fly-webrtc-new-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Pin old production release image for rollback
+        run: echo "ORIGINAL_IMAGE=registry.fly.io/webrtc-new:deployment-01M1D15RJKAMGQPNF45Y1FHQYC" >> "$GITHUB_ENV"
+      - name: Preserve exact deployed port/health/worker configuration
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/real-fly-config
+          cd /tmp/real-fly-config
+          flyctl config save -a webrtc-new
+          test -f fly.toml
+          echo 'Current Fly media port identifiers:'
+          grep -E 'internal_port =|port =|MEDIASOUP_WORKERS|MEDIASOUP_MAX_WORKERS' fly.toml | head -25
+          test "$(grep -c '^  internal_port = 40000' fly.toml)" -eq 2
+          ! grep -Eq 'port = 4000[1-9]' fly.toml
+          grep -q 'MEDIASOUP_WORKERS = "1"' fly.toml
+      - name: Build new image from exact previous running image
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$FLY_API_TOKEN" | docker login registry.fly.io -u x --password-stdin >/dev/null
+          docker pull -q "$ORIGINAL_IMAGE" >/dev/null
+          export NEW_IMAGE="registry.fly.io/webrtc-new:public-rooms-20261103-${GITHUB_SHA::12}"
+          echo "NEW_IMAGE=$NEW_IMAGE" >> "$GITHUB_ENV"
+          docker build --pull=false -f ops/fly-public-room/Dockerfile -t "$NEW_IMAGE" ops/fly-public-room
+          docker run --rm --entrypoint /bin/sh "$NEW_IMAGE" -c 'grep -q TEST_LOGIN_KEY /app/dist/auth/auth.controller.js && grep -q "slot.webRtcServer" /app/dist/mediasoup/transport.service.js && grep -q "PublicRoomsModule" /app/dist/app.module.js'
+          docker push "$NEW_IMAGE"
+      - name: Deploy patched image with ORIGINAL Fly configuration
+        id: deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          flyctl deploy -a webrtc-new -c /tmp/real-fly-config/fly.toml --image "$NEW_IMAGE" --strategy rolling --wait-timeout 180s
+      - name: Validate public rooms API and single port in production
+        id: validate
+        run: |
+          set -euo pipefail
+          for n in $(seq 1 25); do
+            if curl --silent --show-error --fail --max-time 8 https://webrtc-new.fly.dev/health >/tmp/web-health.json; then break; fi
+            sleep 2
+          done
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/web-health.json'))
+          assert d['ok'] is True
+          workers=d['mediasoup']['workers']
+          assert len(workers)==1 and workers[0]['port']==40000,workers
+          print('Production health OK; one worker on port 40000.')
+          PY
+          code="$(curl -sS --max-time 10 -o /tmp/public-rooms-response -w '%{http_code}' https://webrtc-new.fly.dev/public-rooms)"
+          test "$code" = '401'
+          echo "Public rooms route exists, returns HTTP $code for unauthenticated client as expected."
+      - name: Rollback to saved production image if deployment or validation failed
+        if: failure() && steps.deploy.outcome != 'skipped'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set +e
+          echo 'Rolling back to original production image due to failed verification.'
+          flyctl deploy -a webrtc-new -c /tmp/real-fly-config/fly.toml --image "$ORIGINAL_IMAGE" --strategy rolling --wait-timeout 180s
+      - name: Logout
+        if: always()
+        run: docker logout registry.fly.io || true
