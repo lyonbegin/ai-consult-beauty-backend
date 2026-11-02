@@ -1,0 +1,28 @@
+name: Compare webrtc-new runtime contract to local ZIP (read only)
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/inspect-webrtc-new-contract-readonly.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Report nonsecret installed-code indicators
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set +x
+          echo '--- current process NODE_ENV ---'
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'node -p process.env.NODE_ENV' || true
+          echo '--- compiled authentication module indicators ---'
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'grep -E -o "TEST_LOGIN_KEY|Dev token endpoint is disabled in production|test-login-key" /app/dist/auth/auth.controller.js' || true
+          echo '--- compiled telemedicine restrictions ---'
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'grep -E -o "allowUnlistedParticipants|At least one patient is required|Only clinical staff can create consultations" /app/dist/telemedicine/telemedicine.service.js' || true
+          echo '--- compiled generic open admission ---'
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'grep -E -o "Not invited to this session|allowUnlistedParticipants|Session is full" /app/dist/realtime/session.service.js' || true
+          echo '--- end ---'
