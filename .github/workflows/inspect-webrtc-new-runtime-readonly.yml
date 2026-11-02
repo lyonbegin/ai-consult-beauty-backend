@@ -1,0 +1,26 @@
+name: Inspect webrtc-new container source layout (read only)
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/inspect-webrtc-new-runtime-readonly.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Inspect source filenames and declared dependencies only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set +x
+          echo '=== Read-only VM source-layout inspection ==='
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'pwd' || true
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'ls -la /app' || true
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'find /app -maxdepth 2 -type f -name package.json' || true
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'find /app -maxdepth 2 -type f -name fly.toml' || true
+          timeout 45s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'find /app -maxdepth 2 -type d -name .git' || true
+          echo '=== End read-only inspection ==='
