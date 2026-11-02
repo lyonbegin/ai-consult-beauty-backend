@@ -1,0 +1,20 @@
+name: Inspect compiled Nest app module and auth guard safely
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: [.github/workflows/inspect-webrtc-compiled-app-20261103.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Pull own runtime image
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "$FLY_API_TOKEN" | docker login registry.fly.io -u x --password-stdin >/dev/null
+          docker pull -q registry.fly.io/webrtc-new:deployment-01M1D15RJKAMGQPNF45Y1FHQYC >/dev/null
+          docker run --rm --entrypoint /bin/sh registry.fly.io/webrtc-new:deployment-01M1D15RJKAMGQPNF45Y1FHQYC -c "sed -n '1,95p' /app/dist/app.module.js; echo '---GUARD---'; sed -n '1,110p' /app/dist/auth/http-jwt.guard.js; echo '---ENV VALIDATION---'; sed -n '1,90p' /app/dist/config/env.validation.js"
+          docker logout registry.fly.io >/dev/null
