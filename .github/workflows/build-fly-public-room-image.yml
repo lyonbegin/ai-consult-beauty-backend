@@ -58,6 +58,50 @@ jobs:
           assert len(j)>=1
           print('Public room list contains',len(j),'room(s).')
           PY
+          npm install --no-audit --no-fund --prefix /tmp/hitel-socket-ci socket.io-client@4.8.1 >/dev/null
+          NODE_PATH=/tmp/hitel-socket-ci/node_modules node <<'JS'
+          const assert=require('node:assert/strict');
+          const fs=require('node:fs');
+          const {io}=require('socket.io-client');
+          const room=JSON.parse(fs.readFileSync('/tmp/hitel-room.json','utf8'));
+          const host=JSON.parse(fs.readFileSync('/tmp/hitel-token.json','utf8')).accessToken;
+          async function issue(userId){
+            const r=await fetch('http://127.0.0.1:18089/auth/dev-token',{
+              method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({userId,name:userId,platformRole:'user'})});
+            assert.equal(r.status,201);
+            return (await r.json()).accessToken;
+          }
+          async function connect(token){
+            const socket=io('http://127.0.0.1:18089/realtime',{autoConnect:false,transports:['websocket'],auth:{token}});
+            await new Promise((resolve,reject)=>{
+              const t=setTimeout(()=>reject(new Error('socket ready timeout')),9000);
+              socket.once('connection:ready',()=>{clearTimeout(t);resolve()});
+              socket.once('connect_error',reject);socket.connect();
+            });return socket;
+          }
+          function ack(socket,event,input){
+            return new Promise((resolve,reject)=>socket.timeout(10000).emit(event,input,(err,out)=>err?reject(err):resolve(out)));
+          }
+          (async()=>{
+            const guest=await connect(await issue('new-uninvited-guest'));
+            const hostSocket=await connect(host);
+            try{
+              const admission=await ack(guest,'session:join',{sessionId:room.id});
+              assert.equal(admission.ok,true,JSON.stringify(admission));
+              assert.equal(admission.data.participant.role,'GUEST');
+              assert.equal(admission.data.session.status,'LIVE');
+              const rtc=await ack(guest,'rtc:join',{sessionId:room.id,resume:false});
+              assert.equal(rtc.ok,true,JSON.stringify(rtc));
+              console.log('Uninvited user joined original session + rtc:join successfully.');
+              const hostJoin=await ack(hostSocket,'session:join',{sessionId:room.id});
+              assert.equal(hostJoin.ok,true);
+              const closed=await ack(hostSocket,'session:end',{sessionId:room.id});
+              assert.equal(closed.ok,true);
+              console.log('Host ended room through original session:end.');
+            }finally{guest.disconnect();hostSocket.disconnect()}
+          })().catch(error=>{console.error('Guest admission test failed',error.message);process.exitCode=1});
+          JS
       - name: Logout
         if: always()
         run: docker logout registry.fly.io || true
