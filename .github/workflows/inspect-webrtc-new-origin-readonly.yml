@@ -1,0 +1,48 @@
+name: Inspect webrtc-new release origin (read only)
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/inspect-webrtc-new-origin-readonly.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Inspect app, releases and image metadata without exposing secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/fly-research
+          for item in status releases machines image; do
+            case "$item" in
+              status) flyctl status -a webrtc-new --json > /tmp/fly-research/status.json || : ;;
+              releases) flyctl releases -a webrtc-new --json > /tmp/fly-research/releases.json || : ;;
+              machines) flyctl machine list -a webrtc-new --json > /tmp/fly-research/machines.json || : ;;
+              image) flyctl image show -a webrtc-new --json > /tmp/fly-research/image.json || : ;;
+            esac
+          done
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          base=Path('/tmp/fly-research')
+          for item in ('status','releases','machines','image'):
+              f=base/(item+'.json')
+              try: data=json.loads(f.read_text())
+              except Exception as e: print(item+': unavailable ('+type(e).__name__+')');continue
+              rows=data if isinstance(data,list) else (data.get('Releases') or data.get('releases') or data.get('Machines') or data.get('machines') or data)
+              if not isinstance(rows,list): rows=[rows]
+              print('=== '+item+' === records='+str(len(rows)))
+              for row in rows[:8]:
+                  if not isinstance(row,dict):continue
+                  selected={}
+                  for key in ('Name','name','ID','id','Version','version','Status','status','CreatedAt','created_at','createdAt','Description','description','Image','image','Ref','ref','Digest','digest','Source','source','DeployedBy','deployed_by','deployedBy','Commit','commit','GitSha','git_sha','Organization','organization','App','app','app_name','AppName','ReleaseVersion','release_version'):
+                      if key in row and isinstance(row[key],(str,int,float,bool)):selected[key]=row[key]
+                  if isinstance(row.get('image_ref'),dict):
+                      selected['image_ref']={k:row['image_ref'][k] for k in ('repository','digest','tag') if isinstance(row['image_ref'].get(k),str)}
+                  print(json.dumps(selected,ensure_ascii=False))
+          PY
