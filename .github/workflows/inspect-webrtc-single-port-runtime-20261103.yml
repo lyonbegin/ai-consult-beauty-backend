@@ -1,0 +1,40 @@
+name: Inspect existing webrtc-new single media port (read only)
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: ['.github/workflows/inspect-webrtc-single-port-runtime-20261103.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Inspect runtime ports and effective Fly config without secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set +x
+          echo '=== HTTP health ==='
+          curl --silent --show-error --max-time 12 https://webrtc-new.fly.dev/health | python3 -c 'import json,sys; d=json.load(sys.stdin); m=d.get("mediasoup",{}); print(json.dumps({"ok":d.get("ok"),"mediasoup":m,"sessions":d.get("sessions",{})},ensure_ascii=False))' || true
+          echo '=== FLY CONFIG whitelisted only ==='
+          flyctl config show -a webrtc-new --json > /tmp/fly-active-config.json || printf '{}' > /tmp/fly-active-config.json
+          python3 - <<'PY'
+          import json
+          c=json.load(open('/tmp/fly-active-config.json'))
+          print("top-level keys:",list(c) if isinstance(c,dict) else type(c).__name__)
+          if isinstance(c,dict):
+            allowed=('MEDIASOUP_WORKERS','MEDIASOUP_MAX_WORKERS','MEDIASOUP_WEBRTC_PORT_BASE','PORT','MEDIASOUP_LISTEN_IP','NODE_ENV')
+            print('selected env:',json.dumps({k:c.get('env',{}).get(k) for k in allowed}))
+            print('media services:',json.dumps([{'protocol':v.get('protocol'),'internal_port':v.get('internal_port'),'ports':[z.get('port') for z in v.get('ports',[])]} for v in c.get('services',[]) if v.get('internal_port') in (40000,40001,40002,40003,8080)]))
+            print('http service:',json.dumps({'internal_port':c.get('http_service',{}).get('internal_port'),'min_machines_running':c.get('http_service',{}).get('min_machines_running')}))
+          PY
+          echo '=== VM dynamic port/runtime values ==='
+          for v in MEDIASOUP_WORKERS MEDIASOUP_MAX_WORKERS MEDIASOUP_WEBRTC_PORT_BASE; do
+            echo "Setting: $v"
+            timeout 25s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C "printenv $v" || true
+          done
+          echo '=== VM compiled WebRtcServer entrypoints ==='
+          timeout 25s flyctl ssh console -a webrtc-new --machine 08016e5c9415d8 -C 'grep -n -E "createWebRtcServer|webRtcServer:|MEDIASOUP_WEBRTC_PORT_BASE|shared WebRtcServer" /app/dist/mediasoup/mediasoup.service.js /app/dist/mediasoup/transport.service.js' || true
