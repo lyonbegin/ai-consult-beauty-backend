@@ -1,0 +1,52 @@
+name: Restore original Fly WebRTC image after incorrect deploy
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths: [.github/workflows/restore-fly-webrtc-original-20261103.yml]
+permissions:
+  contents: read
+concurrency:
+  group: fly-webrtc-new-production
+  cancel-in-progress: false
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Restore EXACT previous image with saved Fly settings
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/fly-restore
+          cd /tmp/fly-restore
+          flyctl config save -a webrtc-new
+          grep -q "internal_port = 40000" fly.toml
+          ! grep -Eq "port = 4000[1-9]" fly.toml
+          flyctl deploy -a webrtc-new -c fly.toml --image registry.fly.io/webrtc-new:deployment-01M1D15RJKAMGQPNF45Y1FHQYC --strategy rolling --wait-timeout 180s
+      - name: Verify restored image and health
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          flyctl image show -a webrtc-new --json > /tmp/fly-restored-image.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/fly-restored-image.json'))
+          print('Fly image keys:',list(d))
+          assert 'deployment-01M1D15RJKAMGQPNF45Y1FHQYC' in json.dumps(d), 'Original image not active'
+          print('Original runtime image restored.')
+          PY
+          curl --fail --silent --show-error --max-time 15 https://webrtc-new.fly.dev/health > /tmp/health.json
+          python3 - <<'PY'
+          import json
+          h=json.load(open('/tmp/health.json'))
+          assert h.get('ok') is True, h
+          assert len(h['mediasoup']['workers']) == 1
+          print('Health and single worker verified.')
+          PY
+          CODE="$(curl -s -o /tmp/public-rooms-after-restore -w '%{http_code}' --max-time 10 https://webrtc-new.fly.dev/public-rooms)"
+          test "$CODE" = "404"
+          echo "Original service restored; new /public-rooms endpoint absent: $CODE"
