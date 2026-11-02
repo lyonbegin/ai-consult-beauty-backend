@@ -1,0 +1,63 @@
+name: Build and verify Fly public-room patch image (no deployment)
+on:
+  push:
+    branches: [investigate/webrtc-new-deployment-origin-20261103]
+    paths:
+      - ops/fly-public-room/**
+      - .github/workflows/build-fly-public-room-image.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to current Fly app image registry
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "$FLY_API_TOKEN" | docker login registry.fly.io -u x --password-stdin >/dev/null
+      - name: Build patched image without changing Fly production
+        run: docker build -f ops/fly-public-room/Dockerfile -t hitel-public-room-smoke:latest ops/fly-public-room
+      - name: Check production auth and single WebRtcServer retained
+        run: |
+          docker run --rm --entrypoint /bin/sh hitel-public-room-smoke:latest -c 'grep -q TEST_LOGIN_KEY /app/dist/auth/auth.controller.js && grep -q slot.webRtcServer /app/dist/mediasoup/transport.service.js && grep -q PublicRoomsModule /app/dist/app.module.js'
+      - name: Exercise real NestJS API using isolated test container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name hitel-public-api-test -e NODE_ENV=development -e PORT=8080 -e MEDIASOUP_WORKERS=1 -e MEDIASOUP_MAX_WORKERS=1 -e MEDIASOUP_ANNOUNCED_ADDRESS=127.0.0.1 -p 127.0.0.1:18089:8080 hitel-public-room-smoke:latest
+          trap 'docker logs --tail 40 hitel-public-api-test; docker rm -f hitel-public-api-test >/dev/null 2>&1 || :' EXIT
+          for n in $(seq 1 35); do
+            if curl -fsS http://127.0.0.1:18089/health >/tmp/hitel-health.json 2>/dev/null; then break; fi
+            sleep 1
+          done
+          python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/hitel-health.json'))
+          assert j.get('ok') is True
+          print('health ok, workers:',len(j['mediasoup']['workers']))
+          PY
+          curl -fsS -X POST http://127.0.0.1:18089/auth/dev-token -H 'Content-Type: application/json' -d '{"userId":"sdk-ci-host","name":"CI host","platformRole":"doctor"}' >/tmp/hitel-token.json
+          TOKEN="$(python3 -c 'import json; print(json.load(open("/tmp/hitel-token.json"))["accessToken"])')"
+          curl -fsS -X POST http://127.0.0.1:18089/public-rooms -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"title":"SDK public smoke room","maxParticipants":4}' >/tmp/hitel-room.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/hitel-room.json'))
+          assert j['type']=='PUBLIC_ROOM' and j['status']=='LIVE',j
+          assert j['policy']['allowUnlistedParticipants'] is True
+          assert len(j['participants'])==1
+          print('Public room created with one host, LIVE, open admission enabled.')
+          PY
+          curl -fsS http://127.0.0.1:18089/public-rooms -H "Authorization: Bearer $TOKEN" >/tmp/hitel-rooms.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/hitel-rooms.json'))
+          assert len(j)>=1
+          print('Public room list contains',len(j),'room(s).')
+          PY
+      - name: Logout
+        if: always()
+        run: docker logout registry.fly.io || true
