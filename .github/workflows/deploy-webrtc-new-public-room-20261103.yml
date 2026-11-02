@@ -31,7 +31,7 @@ jobs:
           grep -E 'internal_port =|port =|MEDIASOUP_WORKERS|MEDIASOUP_MAX_WORKERS' fly.toml | head -25
           test "$(grep -c '^  internal_port = 40000' fly.toml)" -eq 2
           ! grep -Eq 'port = 4000[1-9]' fly.toml
-          grep -q 'MEDIASOUP_WORKERS = "1"' fly.toml
+          grep -Eq "MEDIASOUP_WORKERS = ['\\\"]1['\\\"]" fly.toml
       - name: Build new image from exact previous running image
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
